@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+chat_history.jsonl
+memory.json
+persona.json
+chats/
+workspace/*
+!workspace/.gitkeep

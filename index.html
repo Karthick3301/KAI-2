@@ -1,0 +1,708 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KAI</title>
+<meta name="description" content="KAI, your personal AI assistant that runs on your own computer.">
+<meta name="theme-color" content="#0b6e8a">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<style>
+  /* ---------- design tokens ---------- */
+  :root {
+    --h: 195; --s: 85%;
+    --ground: #edf1f3; --surface: #ffffff; --ink: #12212b; --muted: #5a6c77; --line: #d6dee3;
+    --accent: hsl(var(--h) var(--s) 30%); --accent-ink: #ffffff;
+    --accent-soft: hsl(var(--h) 45% 92%);
+    --amber: #e8a317; --amber-soft: #fff3d6; --amber-ink: #6b4a00;
+    --shadow: 0 1px 2px rgba(18, 33, 43, .06), 0 8px 24px rgba(18, 33, 43, .06);
+    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", sans-serif;
+    --mono: "Cascadia Code", ui-monospace, Consolas, Menlo, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0d1418; --surface: #141e24; --ink: #e6edf0; --muted: #8ca0ab; --line: #243139;
+      --accent: hsl(var(--h) var(--s) 62%); --accent-ink: hsl(var(--h) 60% 8%);
+      --accent-soft: hsl(var(--h) 35% 16%);
+      --amber: #f2b84b; --amber-soft: #2b2310; --amber-ink: #f2b84b;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0d1418; --surface: #141e24; --ink: #e6edf0; --muted: #8ca0ab; --line: #243139;
+    --accent: hsl(var(--h) var(--s) 62%); --accent-ink: hsl(var(--h) 60% 8%);
+    --accent-soft: hsl(var(--h) 35% 16%);
+    --amber: #f2b84b; --amber-soft: #2b2310; --amber-ink: #f2b84b;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
+    color-scheme: dark;
+  }
+  :root[data-accent="marigold"] { --h: 38; --s: 100%; }
+  :root[data-accent="plum"] { --h: 310; --s: 45%; }
+  :root[data-accent="forest"] { --h: 145; --s: 55%; }
+
+  /* ---------- base ---------- */
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font: 16px/1.6 var(--font); -webkit-font-smoothing: antialiased;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  .btn {
+    background: transparent; border: 1px solid var(--line); border-radius: 10px; padding: 7px 14px;
+    transition: border-color .15s, background .15s;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  .btn.primary:hover:not(:disabled) { filter: brightness(1.08); }
+  .btn.ghost { border-color: transparent; color: var(--muted); }
+  .btn.ghost:hover:not(:disabled) { color: var(--ink); background: var(--accent-soft); border-color: transparent; }
+  svg.i { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  /* ---------- layout ---------- */
+  .app { display: flex; height: 100%; }
+  #side {
+    width: 264px; flex: none; display: flex; flex-direction: column; gap: 12px; padding: 14px 12px;
+    background: var(--surface); border-right: 1px solid var(--line);
+  }
+  #side.collapsed { display: none; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 2px 6px 4px; }
+  .mark { width: 30px; height: 30px; border-radius: 9px; background: var(--accent); display: grid; place-items: center; flex: none; }
+  .mark svg { width: 20px; height: 20px; stroke: var(--accent-ink); fill: none; stroke-width: 3.6; stroke-linecap: round; stroke-linejoin: round; }
+  .brand b { font-size: 20px; font-weight: 800; letter-spacing: .12em; }
+  #chatList { list-style: none; margin: 0; padding: 0; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+  #chatList li { display: flex; align-items: center; border-radius: 10px; }
+  #chatList li:hover { background: var(--accent-soft); }
+  #chatList li.active { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  #chatList .open { flex: 1; min-width: 0; text-align: left; border: 0; background: transparent; padding: 9px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14.5px; }
+  #chatList .del { border: 0; background: transparent; color: var(--muted); padding: 6px 10px; opacity: 0; font-size: 16px; line-height: 1; }
+  #chatList li:hover .del, #chatList .del:focus-visible { opacity: 1; }
+  #chatList .del:hover { color: #c0392b; }
+  .note { font-size: 13px; color: var(--muted); margin: 0; }
+  .side-foot { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .side-foot .btn { display: flex; align-items: center; gap: 10px; text-align: left; width: 100%; padding: 8px 10px; }
+
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+  #chatTitle { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .spacer { flex: 1; }
+  .status {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px 3px 10px; white-space: nowrap; max-width: 44vw;
+  }
+  .status span { overflow: hidden; text-overflow: ellipsis; }
+  .status i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+  .status.busy i { background: var(--amber); animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 50% { transform: scale(1.7); opacity: .45; } }
+  #toolsBtn[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+
+  #chat { flex: 1; overflow-y: auto; padding: 24px 16px 8px; scroll-behavior: smooth; }
+  .wrap { max-width: 740px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+
+  /* ---------- messages ---------- */
+  .msg { overflow-wrap: anywhere; }
+  .msg.user {
+    align-self: flex-end; max-width: 85%; white-space: pre-wrap; background: var(--accent-soft);
+    border-radius: 18px 18px 4px 18px; padding: 9px 16px;
+  }
+  .row { display: flex; gap: 12px; align-items: flex-start; }
+  .row .mark { width: 28px; height: 28px; border-radius: 8px; margin-top: 2px; }
+  .row .mark svg { width: 17px; height: 17px; }
+  .row .body { min-width: 0; flex: 1; }
+  .msg.assistant { white-space: normal; }
+  .msg.assistant p { margin: 0 0 .7em; }
+  .msg.assistant > :last-child { margin-bottom: 0; }
+  .msg.assistant ul, .msg.assistant ol { margin: 0 0 .7em; padding-left: 1.4em; }
+  .msg.assistant li { margin-bottom: .25em; }
+  .msg.assistant li > ul, .msg.assistant li > ol { margin: .25em 0 .1em; }
+  .msg.assistant h4 { margin: .6em 0 .3em; font-size: 1em; }
+  .msg.assistant a { color: var(--accent); text-underline-offset: 2px; }
+  .msg.assistant code { font-family: var(--mono); font-size: .9em; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 1px 5px; }
+  .msg.assistant pre { margin: 0 0 .7em; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; white-space: pre; }
+  .msg.assistant pre code { background: none; border: 0; padding: 0; }
+  .msg.user a { color: var(--accent); }
+  .typing::after { content: ""; display: inline-block; width: 7px; height: 1em; margin-left: 3px; vertical-align: -2px; background: var(--accent); border-radius: 2px; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .acts { display: flex; align-items: center; gap: 2px; margin-top: 6px; opacity: 0; transition: opacity .15s; }
+  .row:hover .acts, .acts:focus-within, .row.last .acts { opacity: 1; }
+  .acts .btn { padding: 3px 8px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+  .acts .when { font-size: 12px; color: var(--muted); margin-left: 8px; }
+
+  /* tool steps */
+  details.steps { margin-left: 40px; font-size: 13.5px; color: var(--muted); }
+  details.steps summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 8px; padding: 3px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
+  details.steps summary::-webkit-details-marker { display: none; }
+  details.steps summary::before { content: ""; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform .15s; }
+  details.steps[open] summary::before { transform: rotate(45deg); }
+  details.steps.working summary { color: var(--amber-ink); border-color: var(--amber); background: var(--amber-soft); }
+  details.steps ul { list-style: none; margin: 8px 0 0; padding: 0 0 0 4px; display: flex; flex-direction: column; gap: 4px; }
+  details.steps li { overflow-wrap: anywhere; }
+  details.steps li b { color: var(--ink); font-weight: 600; }
+  .chip { align-self: center; font-size: 13px; color: var(--muted); border: 1px dashed var(--line); border-radius: 999px; padding: 3px 14px; overflow-wrap: anywhere; max-width: 100%; text-align: center; }
+  .chip.err { color: #b3261e; border-color: #b3261e; border-style: solid; }
+
+  .confirm { margin-left: 40px; background: var(--amber-soft); border: 1px solid var(--amber); border-radius: 14px; padding: 12px 14px; color: var(--ink); }
+  .confirm p { margin: 0 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .confirm .btns { display: flex; gap: 8px; }
+
+  /* empty state */
+  .empty { margin: 9vh auto 0; max-width: 520px; text-align: left; }
+  .empty .mark { width: 44px; height: 44px; border-radius: 13px; margin-bottom: 18px; }
+  .empty .mark svg { width: 28px; height: 28px; }
+  .empty h2 { margin: 0 0 6px; font-size: 28px; line-height: 1.2; letter-spacing: -.01em; }
+  .empty p { margin: 0 0 22px; color: var(--muted); }
+  .starters { display: flex; flex-direction: column; gap: 8px; }
+  .starters button { text-align: left; padding: 12px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+  .starters button:hover { border-color: var(--accent); }
+  .starters small { color: var(--muted); font-size: 13px; }
+
+  /* composer */
+  form#form { padding: 8px 16px 16px; }
+  .docs { max-width: 740px; margin: 0 auto 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .docs:empty { display: none; }
+  .doc { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 4px 3px 12px; background: var(--surface); max-width: 100%; }
+  .doc span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+  .doc button { border: 0; background: transparent; padding: 0 8px; color: var(--muted); }
+  .composer { max-width: 740px; margin: 0 auto; display: flex; gap: 6px; align-items: flex-end; background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 8px; box-shadow: var(--shadow); transition: border-color .15s; }
+  .composer:focus-within { border-color: var(--accent); }
+  .composer textarea { flex: 1; resize: none; border: 0; outline: 0; background: transparent; max-height: 180px; padding: 8px 6px; line-height: 1.5; }
+  .round { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; padding: 0; flex: none; }
+  #send { background: var(--accent); color: var(--accent-ink); border: 0; }
+  #send:hover:not(:disabled) { filter: brightness(1.1); }
+  #attach { background: transparent; border: 0; color: var(--muted); }
+  #attach:hover:not(:disabled) { color: var(--accent); background: var(--accent-soft); }
+  .hint { max-width: 740px; margin: 8px auto 0; text-align: center; font-size: 12.5px; color: var(--muted); }
+
+  /* memory drawer + dialog */
+  #memory { width: 300px; flex: none; display: none; flex-direction: column; gap: 10px; padding: 16px; background: var(--surface); border-left: 1px solid var(--line); overflow-y: auto; }
+  #memory.open { display: flex; }
+  #memory h3, dialog h3 { margin: 0; font-size: 16px; }
+  #memList { margin: 0; padding-left: 20px; }
+  #memList li { margin-bottom: 6px; overflow-wrap: anywhere; }
+  #memList button { border: 0; background: transparent; color: var(--muted); font-size: 12px; text-decoration: underline; padding: 0 4px; }
+  .field { width: 100%; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--ground); }
+  textarea.field { resize: vertical; min-height: 80px; max-height: 240px; }
+  dialog { border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--ink); padding: 0; width: min(540px, 94vw); box-shadow: var(--shadow); }
+  dialog::backdrop { background: rgba(5, 12, 16, .55); }
+  dialog form { padding: 20px 22px 22px; max-height: 88vh; overflow-y: auto; }
+  label, .lbl { display: block; font-size: 13px; color: var(--muted); margin: 14px 0 5px; }
+  fieldset { border: 0; padding: 0; margin: 0; }
+  .swatches { display: flex; gap: 10px; flex-wrap: wrap; }
+  .swatches label { margin: 0; display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; cursor: pointer; padding: 5px 12px 5px 6px; border: 1px solid var(--line); border-radius: 999px; }
+  .swatches input { position: absolute; opacity: 0; }
+  .swatches .dot { width: 18px; height: 18px; border-radius: 50%; background: var(--c); }
+  .swatches input:checked + .dot { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--c); }
+  .swatches label:has(input:checked) { border-color: var(--ink); }
+  .swatches input:focus-visible + .dot { outline: 2px solid var(--ink); outline-offset: 3px; }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+  #setMsg { min-height: 1.3em; margin-top: 10px; }
+  .actions.sticky { position: sticky; bottom: -22px; background: var(--surface); padding: 12px 0 0; margin-bottom: -4px; }
+  #scrim { display: none; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0 4px; }
+
+  @media (max-width: 800px) {
+    #side { position: fixed; inset: 0 auto 0 0; z-index: 20; width: min(300px, 86vw); box-shadow: var(--shadow); transform: translateX(-102%); transition: transform .2s; display: flex; }
+    #side.collapsed { display: flex; }
+    #side.open { transform: none; }
+    #memory.open { position: fixed; inset: 0 0 0 auto; z-index: 20; width: min(340px, 92vw); box-shadow: var(--shadow); }
+    .status { max-width: 46vw; }
+    #toolsLabel { display: none; }
+    #scrim.on { display: block; position: fixed; inset: 0; z-index: 15; background: rgba(5, 12, 16, .5); }
+    details.steps, .confirm { margin-left: 0; }
+    .acts { opacity: 1; }
+    form#form { padding: 8px 10px 12px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+<body>
+<template id="kmark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M10 6v20M10 17l11-11M13 15l9 11"/></svg></template>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="i-brain" viewBox="0 0 24 24"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 1V5a2 2 0 0 0-3-1zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 1"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+    <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></symbol>
+    <symbol id="i-retry" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></symbol>
+    <symbol id="i-tools" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <div id="scrim"></div>
+  <aside id="side" aria-label="Chats">
+    <div class="brand"><span class="mark" id="brandMark"></span><b>KAI</b></div>
+    <button class="btn primary" id="newBtn" type="button">New chat</button>
+    <ul id="chatList"></ul>
+    <p class="note" id="chatEmpty">Your conversations will show up here.</p>
+    <div class="side-foot">
+      <button class="btn ghost" id="memBtn" type="button"><svg class="i"><use href="#i-brain"/></svg>Memory</button>
+      <button class="btn ghost" id="setBtn" type="button"><svg class="i"><use href="#i-gear"/></svg>Settings</button>
+      <button class="btn ghost" id="themeBtn" type="button" title="Switch between automatic, light and dark"><svg class="i"><use id="themeUse" href="#i-auto"/></svg><span id="themeLabel">Theme: auto</span></button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header>
+      <button class="btn ghost" id="menuBtn" type="button" aria-label="Show or hide chats"><svg class="i"><use href="#i-menu"/></svg></button>
+      <div id="chatTitle">New chat</div>
+      <div class="spacer"></div>
+      <div class="status" id="status" role="status" aria-live="polite"><i></i><span id="statusText">connecting...</span></div>
+      <button class="btn" id="toolsBtn" type="button" aria-pressed="true" title="Let KAI use tools: search, files, time, memory"><svg class="i"><use href="#i-tools"/></svg><span class="sr">Tools</span><span id="toolsLabel" style="margin-left:6px">Tools on</span></button>
+    </header>
+
+    <section id="chat" aria-label="Conversation"><div class="wrap" id="log"></div></section>
+
+    <form id="form">
+      <div class="docs" id="docs"></div>
+      <div class="composer">
+        <button type="button" class="btn round" id="attach" title="Attach a document (PDF, Word, text) and ask about it" aria-label="Attach a document"><svg class="i"><use href="#i-plus"/></svg></button>
+        <input type="file" id="file" hidden accept=".pdf,.docx,.txt,.md,.csv,.json,.log,.py,.js,.ts,.html,.css,.java,.kt,.xml,.yaml,.yml,.ini,.toml,.sql,.c,.cpp,.h">
+        <textarea id="input" rows="1" placeholder="Message KAI" aria-label="Message KAI" autofocus></textarea>
+        <button class="btn round" id="send" type="submit" aria-label="Send"><svg class="i"><use href="#i-send"/></svg></button>
+      </div>
+      <div class="hint">Enter to send, Shift+Enter for a new line. KAI can make mistakes, so check anything important.</div>
+    </form>
+  </div>
+
+  <aside id="memory" aria-label="Long-term memory">
+    <h3>Long-term memory</h3>
+    <p class="note">What KAI has saved about you. It only knows what is listed here.</p>
+    <ol id="memList"></ol>
+    <p class="note" id="memEmpty">Nothing saved yet.</p>
+    <input class="field" id="memInput" placeholder="Add something to remember" maxlength="300" aria-label="Add a memory">
+    <p class="note">Press Enter to save.</p>
+    <button class="btn" id="memClear" type="button">Clear all memory</button>
+  </aside>
+</div>
+
+<dialog id="settings">
+  <form method="dialog" id="setForm">
+    <h3>Settings</h3>
+    <label for="sName">Name</label>
+    <input class="field" id="sName" maxlength="40" required>
+    <label for="sRole">Role (what KAI is)</label>
+    <input class="field" id="sRole" maxlength="200">
+    <label for="sTone">Tone</label>
+    <input class="field" id="sTone" maxlength="100">
+    <label for="sInstr">Extra instructions (optional, replaces the default intro)</label>
+    <textarea class="field" id="sInstr" maxlength="2000"></textarea>
+    <label for="sModel">Model</label>
+    <select class="field" id="sModel"></select>
+    <p class="note" id="sModelNote" style="margin-top:6px"></p>
+    <div class="actions" style="margin-top:12px"><button type="button" class="btn" id="sReset">Reset persona</button></div>
+    <hr>
+    <fieldset>
+      <legend class="lbl">Colour</legend>
+      <div class="swatches" id="swatches">
+        <label><input type="radio" name="accent" value="peacock"><span class="dot" style="--c:#0b6e8a"></span>Peacock</label>
+        <label><input type="radio" name="accent" value="marigold"><span class="dot" style="--c:#b87300"></span>Marigold</label>
+        <label><input type="radio" name="accent" value="plum"><span class="dot" style="--c:#8a3f7d"></span>Plum</label>
+        <label><input type="radio" name="accent" value="forest"><span class="dot" style="--c:#2f7d4f"></span>Forest</label>
+      </div>
+    </fieldset>
+    <div class="note" id="setMsg" role="status"></div>
+    <div class="actions sticky">
+      <button type="button" class="btn" id="sClose">Close</button>
+      <button type="submit" class="btn primary" id="sSave">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const log = $("log"), chat = $("chat"), input = $("input"), sendBtn = $("send");
+let busy = false, localInfo = { local: true, provider: "", model: "" };
+
+/* ---------- small helpers ---------- */
+async function api(path, body) {
+  const res = await fetch(path, body === undefined ? {} : {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  return res.json();
+}
+function store(key, value) { try { value === undefined ? localStorage.removeItem(key) : localStorage.setItem(key, value); } catch (e) {} }
+function load(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+function icon(name) {
+  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("class", "i");
+  const u = document.createElementNS("http://www.w3.org/2000/svg", "use"); u.setAttribute("href", "#i-" + name);
+  s.appendChild(u); return s;
+}
+function mark() { return document.getElementById("kmark").content.firstElementChild.cloneNode(true); }
+function nearBottom() { return chat.scrollHeight - chat.scrollTop - chat.clientHeight < 140; }
+function scrollDown(force) { if (force || nearBottom()) chat.scrollTop = chat.scrollHeight; }
+function clock() { return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
+
+/* ---------- theme and colour ---------- */
+const THEMES = ["auto", "light", "dark"];
+function applyTheme(t) {
+  if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+  $("themeLabel").textContent = "Theme: " + t;
+  $("themeUse").setAttribute("href", "#i-" + (t === "light" ? "sun" : t === "dark" ? "moon" : "auto"));
+}
+function applyAccent(a) {
+  if (a && a !== "peacock") document.documentElement.dataset.accent = a; else delete document.documentElement.dataset.accent;
+  const radio = document.querySelector('input[name="accent"][value="' + (a || "peacock") + '"]'); if (radio) radio.checked = true;
+}
+let theme = load("kai-theme") || "auto";
+applyTheme(THEMES.includes(theme) ? theme : "auto");
+applyAccent(load("kai-accent") || "peacock");
+$("themeBtn").onclick = () => { theme = THEMES[(THEMES.indexOf(theme) + 1) % 3]; store("kai-theme", theme); applyTheme(theme); };
+document.querySelectorAll('input[name="accent"]').forEach((r) => r.addEventListener("change", () => { store("kai-accent", r.value); applyAccent(r.value); }));
+$("brandMark").appendChild(mark());
+
+/* ---------- safe markdown (DOM nodes only, never innerHTML) ---------- */
+const INLINE_RE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\[[^\]\n]+\]\(https?:\/\/[^)\s]+\))|(https?:\/\/[^\s<>"')\]]+[^\s<>"')\].,;:!?])/g;
+function link(parent, href, label) {
+  const a = el("a", "", label); a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer"; parent.appendChild(a);
+}
+function inline(parent, text) {
+  let last = 0, m; INLINE_RE.lastIndex = 0;
+  while ((m = INLINE_RE.exec(text)) !== null) {
+    parent.appendChild(document.createTextNode(text.slice(last, m.index)));
+    const tok = m[0];
+    if (m[1]) parent.appendChild(el("code", "", tok.slice(1, -1)));
+    else if (m[2]) parent.appendChild(el("strong", "", tok.slice(2, -2)));
+    else if (m[3]) { const k = tok.indexOf("]("); link(parent, tok.slice(k + 2, -1), tok.slice(1, k)); }
+    else link(parent, tok, tok);
+    last = m.index + tok.length;
+  }
+  parent.appendChild(document.createTextNode(text.slice(last)));
+}
+function renderMd(root, text) {
+  root.textContent = "";
+  let para = null, list = null, code = null, sub = null, lastLi = null;
+  const endList = () => { list = null; sub = null; lastLi = null; };
+  for (const line of text.replace(/\s+$/, "").split("\n")) {
+    if (code) { if (line.trim().startsWith("```")) code = null; else code.textContent += (code.textContent ? "\n" : "") + line; continue; }
+    if (line.trim().startsWith("```")) {
+      para = null; endList();
+      const pre = el("pre"); code = el("code"); pre.appendChild(code); root.appendChild(pre); continue;
+    }
+    if (!line.trim()) { para = null; continue; }
+    let m;
+    if ((m = line.match(/^\s{0,3}#{1,4}\s+(.*)$/))) { para = null; endList(); const h = el("h4"); inline(h, m[1]); root.appendChild(h); continue; }
+    if ((m = line.match(/^(\s*)([-*•]|\d+[.)])\s+(.*)$/))) {
+      const indent = m[1].replace(/\t/g, "    ").length, ordered = /\d/.test(m[2]);
+      if (list && lastLi && (indent >= 2 || (list.tagName === "OL" && !ordered))) {
+        const want = ordered ? "OL" : "UL";
+        if (!sub || sub.tagName !== want) { sub = el(want.toLowerCase()); lastLi.appendChild(sub); }
+        const li = el("li"); inline(li, m[3]); sub.appendChild(li); continue;
+      }
+      if (!list || list.tagName !== (ordered ? "OL" : "UL")) { para = null; list = el(ordered ? "ol" : "ul"); root.appendChild(list); sub = null; }
+      const li = el("li"); inline(li, m[3]); if (ordered) li.value = parseInt(m[2], 10);
+      list.appendChild(li); lastLi = li; sub = null; continue;
+    }
+    endList();
+    if (!para) { para = el("p"); root.appendChild(para); } else para.appendChild(el("br"));
+    inline(para, line.trim());
+  }
+}
+function plainLinks(root, text) {
+  root.textContent = ""; let last = 0, m; INLINE_RE.lastIndex = 0;
+  const re = /https?:\/\/[^\s<>"')\]]+[^\s<>"')\].,;:!?]/g;
+  while ((m = re.exec(text)) !== null) { root.appendChild(document.createTextNode(text.slice(last, m.index))); link(root, m[0], m[0]); last = m.index + m[0].length; }
+  root.appendChild(document.createTextNode(text.slice(last)));
+}
+function fill(node, text) { node.dataset.raw = text; if (node.classList.contains("assistant")) renderMd(node, text); else plainLinks(node, text); }
+
+/* ---------- conversation view ---------- */
+function addUser(text) { const m = el("div", "msg user"); fill(m, text); log.appendChild(m); scrollDown(true); return m; }
+function addAssistant(text, when) {
+  const row = el("div", "row"); const mk = el("span", "mark"); mk.appendChild(mark());
+  const body = el("div", "body"); const msg = el("div", "msg assistant"); fill(msg, text);
+  const acts = el("div", "acts");
+  const copy = el("button", "btn ghost", ""); copy.type = "button"; copy.append(icon("copy"), document.createTextNode("Copy"));
+  copy.onclick = async () => {
+    try { await navigator.clipboard.writeText(msg.dataset.raw || ""); } catch (e) {
+      const t = el("textarea"); t.value = msg.dataset.raw || ""; document.body.appendChild(t); t.select(); try { document.execCommand("copy"); } catch (e2) {} t.remove();
+    }
+    copy.lastChild.textContent = "Copied"; setTimeout(() => { copy.lastChild.textContent = "Copy"; }, 1400);
+  };
+  acts.appendChild(copy);
+  if (when) acts.appendChild(el("span", "when", when));
+  body.append(msg, acts); row.append(mk, body); log.appendChild(row);
+  return msg;
+}
+function addNote(text, isError) { const c = el("div", "chip" + (isError ? " err" : ""), text); log.appendChild(c); scrollDown(true); }
+
+const FRIENDLY = {
+  get_current_time: "Checked the time", get_current_date: "Checked the date", calculate: "Did the maths",
+  web_search: "Searched the web", web_fetch: "Read a web page", read_file: "Read a file", write_file: "Wrote a file",
+  list_files: "Looked at files", remember: "Saved a memory", recall_memory: "Looked at memory",
+};
+function describeStep(text) {
+  const m = text.match(/^Using tool (\w+)\(([\s\S]*)\)$/);
+  if (!m) return null;
+  let detail = "";
+  try { detail = Object.entries(JSON.parse(m[2] || "{}")).filter(([, v]) => v !== "" && v !== null).map(([k, v]) => k + ": " + v).join(", "); } catch (e) { detail = m[2]; }
+  return { label: FRIENDLY[m[1]] || m[1], detail };
+}
+let stepsBox = null;
+function addStep(step) {
+  if (!stepsBox) {
+    stepsBox = el("details", "steps working"); stepsBox.dataset.n = "0";
+    stepsBox.appendChild(el("summary")); stepsBox.appendChild(el("ul")); log.appendChild(stepsBox);
+  }
+  const n = +stepsBox.dataset.n + 1; stepsBox.dataset.n = n;
+  const li = el("li"); li.append(el("b", "", step.label)); if (step.detail) li.append(document.createTextNode(" - " + step.detail));
+  stepsBox.querySelector("ul").appendChild(li);
+  stepsBox.querySelector("summary").textContent = "Working: " + step.label.toLowerCase() + (n > 1 ? " (" + n + " steps)" : "");
+  scrollDown();
+}
+function finishSteps() {
+  if (!stepsBox) return;
+  const n = +stepsBox.dataset.n;
+  stepsBox.classList.remove("working");
+  stepsBox.querySelector("summary").textContent = "Used " + n + (n === 1 ? " tool" : " tools");
+  stepsBox = null;
+}
+
+function markLast() {
+  document.querySelectorAll(".row.last").forEach((r) => { r.classList.remove("last"); const b = r.querySelector(".retry"); if (b) b.remove(); });
+  const rows = log.querySelectorAll(".row"); if (!rows.length) return;
+  const last = rows[rows.length - 1];
+  if (!log.querySelector(".msg.user")) return;
+  last.classList.add("last");
+  const retry = el("button", "btn ghost retry"); retry.type = "button"; retry.append(icon("retry"), document.createTextNode("Try again"));
+  retry.onclick = () => regenerate();
+  last.querySelector(".acts").appendChild(retry);
+}
+
+function showEmpty(info) {
+  log.textContent = "";
+  const box = el("div", "empty");
+  const mk = el("span", "mark"); mk.appendChild(mark());
+  box.appendChild(mk);
+  box.appendChild(el("h2", "", "What shall we work on?"));
+  box.appendChild(el("p", "", info.local
+    ? "Runs on this computer with " + info.model + ". Only web searches and page reads go online."
+    : "Uses the " + info.provider + " cloud with " + info.model + ", so your messages leave this computer."));
+  const list = el("div", "starters");
+  const items = [
+    ["Ask about a document", "Attach a PDF or Word file", () => $("attach").click()],
+    ["Search the web for the latest Android news", "Uses web search", () => ask("Search the web for the latest Android news")],
+    ["What is the time in Tokyo?", "Uses the clock tool", () => ask("What is the time in Tokyo?")],
+  ];
+  items.forEach(([t, s, fn]) => {
+    const b = el("button"); b.type = "button"; b.append(el("span", "", t), el("small", "", s)); b.onclick = fn; list.appendChild(b);
+  });
+  box.appendChild(list); log.appendChild(box);
+}
+function ask(text) { input.value = text; send(); }
+
+function renderHistory(state) {
+  log.textContent = ""; stepsBox = null;
+  if (!state.history.length) { showEmpty(localInfo); return; }
+  state.history.forEach((m) => { if (m.role === "user") addUser(m.content); else addAssistant(m.content); });
+  markLast(); scrollDown(true);
+}
+
+/* ---------- state, header, memory ---------- */
+function setStatus(busyNow) {
+  const box = $("status"); box.classList.toggle("busy", busyNow);
+  $("statusText").textContent = busyNow ? "Thinking..." : (localInfo.local ? "On this computer - " : localInfo.provider + " cloud - ") + localInfo.model;
+}
+function render(state) {
+  localInfo = { local: state.provider === "ollama", provider: state.provider, model: state.model };
+  setStatus(busy);
+  $("toolsBtn").setAttribute("aria-pressed", String(state.tools));
+  $("toolsLabel").textContent = state.tools ? "Tools on" : "Tools off";
+  const list = $("memList"); list.textContent = "";
+  state.memories.forEach((fact, i) => {
+    const li = el("li", "", fact + " "); const b = el("button", "", "remove"); b.type = "button";
+    b.onclick = async () => render(await api("/api/memory", { action: "remove", index: i + 1 }));
+    li.appendChild(b); list.appendChild(li);
+  });
+  $("memEmpty").style.display = state.memories.length ? "none" : "block";
+  renderDocs(state);
+  return state;
+}
+function setBusy(v) { busy = v; sendBtn.disabled = v; $("newBtn").disabled = v; setStatus(v); }
+
+/* ---------- approvals ---------- */
+function askApproval(ev) {
+  const card = el("div", "confirm"); card.setAttribute("role", "alertdialog");
+  const p = el("p", "", ev.message); const btns = el("div", "btns");
+  const yes = el("button", "btn primary", "Allow"), no = el("button", "btn", "Deny"); yes.type = no.type = "button";
+  const answer = async (allow) => { yes.disabled = no.disabled = true; p.textContent += allow ? "\nAllowed." : "\nDenied."; await api("/api/confirm", { id: ev.id, allow }); };
+  yes.onclick = () => answer(true); no.onclick = () => answer(false);
+  btns.append(yes, no); card.append(p, btns); log.appendChild(card); scrollDown(true); no.focus();
+}
+
+/* ---------- streaming a reply ---------- */
+async function stream(path, body) {
+  setBusy(true); stepsBox = null;
+  let bubble = null, buffer = "";
+  try {
+    const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) { const err = await res.json().catch(() => ({})); addNote("Error: " + (err.error || res.status), true); return; }
+    const reader = res.body.getReader(), dec = new TextDecoder("utf-8"); let pending = "";
+    for (;;) {
+      const { value, done } = await reader.read(); if (done) break;
+      pending += dec.decode(value, { stream: true }); let cut;
+      while ((cut = pending.indexOf("\n\n")) >= 0) {
+        const line = pending.slice(0, cut); pending = pending.slice(cut + 2);
+        if (!line.startsWith("data: ")) continue;
+        const ev = JSON.parse(line.slice(6));
+        if (ev.type === "token") {
+          if (!bubble) { finishSteps(); bubble = addAssistant("", clock()); bubble.classList.add("typing"); }
+          buffer += ev.text; const keep = nearBottom(); fill(bubble, buffer); if (keep) scrollDown(true);
+        } else if (ev.type === "event") {
+          if (bubble) { bubble.classList.remove("typing"); bubble = null; buffer = ""; }
+          const step = describeStep(ev.text);
+          if (step) addStep(step); else addNote(ev.text, false);
+        } else if (ev.type === "confirm") { askApproval(ev);
+        } else if (ev.type === "done") { if (!bubble && ev.reply) { finishSteps(); addAssistant(ev.reply, clock()); }
+        } else if (ev.type === "error") { addNote("Error: " + ev.text, true); }
+      }
+    }
+  } catch (e) {
+    addNote("Could not reach KAI (" + e.message + "). Is web_server.py still running?", true);
+  } finally {
+    if (bubble) bubble.classList.remove("typing");
+    finishSteps(); setBusy(false); markLast(); input.focus(); refreshChats();
+  }
+}
+async function send() {
+  const text = input.value.trim(); if (!text || busy) return;
+  input.value = ""; autosize();
+  if (log.querySelector(".empty")) log.textContent = "";
+  addUser(text); markLast(); await stream("/api/chat", { message: text });
+}
+async function regenerate() {
+  if (busy) return;
+  const users = log.querySelectorAll(".msg.user"); if (!users.length) return;
+  let node = users[users.length - 1].nextSibling;
+  while (node) { const next = node.nextSibling; node.remove(); node = next; }
+  await stream("/api/regenerate", {});
+}
+
+/* ---------- documents ---------- */
+function renderDocs(state) {
+  const box = $("docs"); box.textContent = "";
+  (state.docs || []).forEach((d) => {
+    const chip = el("div", "doc"); const label = el("span", "", d.name); label.title = d.name + " (" + d.chars + " characters read)";
+    const x = el("button", "", "×"); x.type = "button"; x.title = "Remove"; x.setAttribute("aria-label", "Remove " + d.name);
+    x.onclick = async () => { const s = await api("/api/docs/remove", { name: d.name }); if (!s.error) renderDocs(s); else addNote("Error: " + s.error, true); };
+    chip.append(label, x); box.appendChild(chip);
+  });
+}
+$("attach").onclick = () => { if (!busy) $("file").click(); };
+$("file").onchange = async () => {
+  const file = $("file").files[0]; $("file").value = ""; if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { addNote("Error: file is too big (max 5 MB)", true); return; }
+  const data = await new Promise((resolve, reject) => {
+    const r = new FileReader(); r.onload = () => resolve(String(r.result).split(",")[1] || ""); r.onerror = () => reject(new Error("could not read the file")); r.readAsDataURL(file);
+  }).catch((e) => { addNote("Error: " + e.message, true); return null; });
+  if (data === null) return;
+  if (log.querySelector(".empty")) log.textContent = "";
+  setBusy(true); addNote("Reading " + file.name + "...", false);
+  try {
+    const s = await api("/api/upload", { name: file.name, data });
+    if (s.error) addNote("Error: " + s.error, true); else { renderDocs(s); addNote("Attached " + file.name + ". Ask about it.", false); }
+  } catch (e) { addNote("Upload failed: " + e.message, true); }
+  finally { setBusy(false); input.focus(); }
+};
+
+/* ---------- saved chats ---------- */
+function renderChats(info) {
+  const list = $("chatList"); list.textContent = "";
+  const active = info.chat_id || info.active; let title = "New chat";
+  (info.chats || []).forEach((c) => {
+    const li = el("li"); if (c.id === active) { li.className = "active"; title = c.title; }
+    const open = el("button", "open", c.title); open.type = "button"; open.title = c.title;
+    open.onclick = async () => {
+      if (busy || c.id === active) return;
+      const s = await api("/api/chat/open", { id: c.id });
+      if (!s.error) { render(s); renderHistory(s); renderChats(s); closeSideOnMobile(); }
+    };
+    const del = el("button", "del", "×"); del.type = "button"; del.title = "Delete chat"; del.setAttribute("aria-label", "Delete chat " + c.title);
+    del.onclick = async () => {
+      if (busy || !confirm("Delete this chat?")) return;
+      const s = await api("/api/chat/delete", { id: c.id });
+      if (!s.error) { render(s); renderHistory(s); renderChats(s); }
+    };
+    li.append(open, del); list.appendChild(li);
+  });
+  $("chatTitle").textContent = title;
+  $("chatEmpty").style.display = (info.chats || []).length ? "none" : "block";
+}
+async function refreshChats() { const info = await api("/api/chats", {}); if (!info.error) renderChats({ chats: info.chats, chat_id: info.active }); }
+const isMobile = () => window.innerWidth <= 800;
+function closeSideOnMobile() { if (isMobile()) { $("side").classList.remove("open"); syncScrim(); } }
+function syncScrim() { $("scrim").classList.toggle("on", isMobile() && ($("side").classList.contains("open") || $("memory").classList.contains("open"))); }
+$("menuBtn").onclick = () => { $("side").classList.toggle(isMobile() ? "open" : "collapsed"); syncScrim(); };
+$("scrim").onclick = () => { $("side").classList.remove("open"); $("memory").classList.remove("open"); syncScrim(); };
+$("newBtn").onclick = async () => {
+  let s = await api("/api/chat/new", {});
+  if (s.error) s = await api("/api/clear", {});
+  if (s.error) return;
+  render(s); renderHistory(s); renderChats(s); closeSideOnMobile(); input.focus();
+};
+
+/* ---------- memory, tools, settings ---------- */
+$("memBtn").onclick = () => { $("memory").classList.toggle("open"); closeSideOnMobile(); syncScrim(); };
+$("toolsBtn").onclick = async () => { const on = $("toolsBtn").getAttribute("aria-pressed") === "true"; render(await api("/api/tools", { enabled: !on })); };
+$("memInput").addEventListener("keydown", async (e) => {
+  if (e.key !== "Enter" || !$("memInput").value.trim()) return;
+  const s = await api("/api/memory", { action: "add", text: $("memInput").value }); $("memInput").value = ""; render(s);
+});
+$("memClear").onclick = async () => { if (confirm("Delete all long-term memories?")) render(await api("/api/memory", { action: "clear" })); };
+
+const dlg = $("settings");
+function fillSettings(s) { $("sName").value = s.name; $("sRole").value = s.role || ""; $("sTone").value = s.tone || ""; $("sInstr").value = s.instructions || ""; }
+function setMsg(t) { $("setMsg").textContent = t; }
+$("setBtn").onclick = async () => {
+  setMsg(""); fillSettings(await api("/api/state"));
+  const info = await api("/api/models", {}); const sel = $("sModel"); sel.textContent = "";
+  (info.models.length ? info.models : [info.current]).forEach((m) => { const o = el("option", "", m); o.value = m; if (m === info.current) o.selected = true; sel.appendChild(o); });
+  sel.disabled = !info.can_switch;
+  $("sModelNote").textContent = info.can_switch ? "Models installed in Ollama on this computer." : "Provider: " + info.provider + ". To change the model, edit MODEL_NAME in your .env file.";
+  dlg.showModal();
+};
+$("sClose").onclick = () => dlg.close();
+async function savePersona(extra) {
+  const res = await api("/api/persona", Object.assign({ name: $("sName").value, role: $("sRole").value, tone: $("sTone").value, instructions: $("sInstr").value }, extra || {}));
+  if (res.error) { setMsg(res.error); return null; }
+  render(res); fillSettings(res); if (log.querySelector(".empty")) showEmpty(localInfo); return res;
+}
+$("setForm").addEventListener("submit", async (e) => {
+  e.preventDefault(); if (!(await savePersona())) return;
+  const sel = $("sModel");
+  if (!sel.disabled) {
+    const cur = (await api("/api/state")).model;
+    if (sel.value && sel.value !== cur) { const res = await api("/api/model", { name: sel.value }); if (res.error) { setMsg(res.error); return; } render(res); }
+  }
+  setMsg("Saved."); setTimeout(() => dlg.close(), 500);
+});
+$("sReset").onclick = async () => { if (await savePersona({ reset: true })) setMsg("Persona reset to default."); };
+
+/* ---------- composer ---------- */
+function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 180) + "px"; }
+input.addEventListener("input", autosize);
+input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
+$("form").addEventListener("submit", (e) => { e.preventDefault(); send(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { $("memory").classList.remove("open"); closeSideOnMobile(); syncScrim(); } });
+
+api("/api/state").then((s) => { render(s); renderHistory(s); refreshChats(); })
+  .catch(() => { $("statusText").textContent = "server not reachable"; });
+</script>
+</body>
+</html>
