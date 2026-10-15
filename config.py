@@ -27,14 +27,20 @@ def env_int(key: str, default: int) -> int:
     value = os.getenv(key)
     if value is None or not value.strip():
         return default
-    return int(value)
+    try:
+        return int(value)
+    except ValueError:
+        raise ValueError(f"{key} in your .env file must be a whole number, but it is {value!r}.") from None
 
 
 def env_float(key: str, default: float) -> float:
     value = os.getenv(key)
     if value is None or not value.strip():
         return default
-    return float(value)
+    try:
+        return float(value)
+    except ValueError:
+        raise ValueError(f"{key} in your .env file must be a number, but it is {value!r}.") from None
 
 
 def env_path(key: str, default: str) -> str:
@@ -65,6 +71,14 @@ class ModelConfig:
         }
 
 
+# Older saved persona.json files carry this wording; it is upgraded when loaded.
+OLD_DEFAULT_CAPABILITIES = [
+    "answer questions",
+    "use tools for time, files, math, and web pages",
+    "remember facts the user asks you to keep",
+]
+
+
 @dataclass
 class Persona:
     name: str = "KAI"
@@ -73,7 +87,7 @@ class Persona:
     instructions: str = ""
     capabilities: List[str] = field(default_factory=lambda: [
         "answer questions",
-        "use tools for time, files, math, and web pages",
+        "use tools for time, files, math, web search, and web pages",
         "remember facts the user asks you to keep",
     ])
     limitations: List[str] = field(default_factory=lambda: [
@@ -105,12 +119,15 @@ class Persona:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Persona":
         defaults = cls()
+        saved_capabilities = data.get("capabilities")
+        if saved_capabilities == OLD_DEFAULT_CAPABILITIES:
+            saved_capabilities = None
         return cls(
             name=data.get("name") or defaults.name,
             role=data.get("role") or defaults.role,
             tone=data.get("tone") or defaults.tone,
             instructions=data.get("instructions") or "",
-            capabilities=data.get("capabilities") or defaults.capabilities,
+            capabilities=saved_capabilities or defaults.capabilities,
             limitations=data.get("limitations") or defaults.limitations,
         )
 
@@ -146,11 +163,11 @@ class Config:
 
         default_model_names = {
             "mistral": "mistral-small-latest",
-            "ollama": "llama3.1",
+            "ollama": "qwen2.5:7b",
             "gemini": "gemini-3.6-flash",
         }
         self.model_config = ModelConfig(
-            name=os.getenv("MODEL_NAME", default_model_names[provider]),
+            name=(os.getenv("MODEL_NAME") or "").strip() or default_model_names[provider],
             provider=provider,
             temperature=env_float("TEMPERATURE", 0.7),
             max_tokens=env_int("MAX_TOKENS", 2048),

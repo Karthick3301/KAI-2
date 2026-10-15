@@ -117,7 +117,7 @@ Created while running: `chat_history.jsonl`, `chats/`, `memory.json`, `persona.j
 ## Run the tests
 
 ```powershell
-python -m unittest test_documents test_web_server test_links test_web_search test_memory test_ollama test_security test_web_fetch test_prompt test_tools test_errors test_history
+python -m unittest test_config test_documents test_web_server test_links test_web_search test_memory test_ollama test_security test_web_fetch test_prompt test_tools test_errors test_history
 ```
 
 ## Known limits
