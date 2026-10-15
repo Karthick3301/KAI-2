@@ -99,6 +99,8 @@ The terminal keeps its chat in `chat_history.jsonl`. The website keeps its chats
 
 ## Files
 
+How the pieces fit together is explained in [ARCHITECTURE.md](ARCHITECTURE.md).
+
 | File | What it does |
 |---|---|
 | `main.py` | Terminal app |
