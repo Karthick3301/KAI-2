@@ -202,6 +202,19 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if path == "/app.js":
+            page = STATIC_DIR / "app.js"
+            if not page.exists():
+                return self._json({"error": "app.js is missing"}, 500)
+            body = page.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/javascript; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if path == "/icon.svg":
             body = ICON_SVG.encode("utf-8")
             self.send_response(200)
