@@ -60,12 +60,13 @@ def get_user_input(
     allow_voice: bool = True,
     wake_enabled: bool = False,
     wake_word: str = "hey kai",
+    stt_mode: str = "auto",
 ) -> str:
     try:
         if prompt:
             print_color(prompt, end="")
         if allow_voice and VOICE_MODE:
-            spoken = get_voice_input(wake_enabled, wake_word)
+            spoken = get_voice_input(wake_enabled, wake_word, stt_mode)
             if spoken:
                 print()
                 return spoken
@@ -345,6 +346,7 @@ def main() -> None:
                 user_input = get_user_input(
                     wake_enabled=assistant.app_config.voice_wake_enabled,
                     wake_word=assistant.app_config.voice_wake_word,
+                    stt_mode=getattr(assistant.app_config, "voice_stt_mode", "auto"),
                 )
                 if not user_input.strip():
                     continue
