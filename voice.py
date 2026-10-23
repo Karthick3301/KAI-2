@@ -11,7 +11,12 @@ recognition sends audio to Google's cloud. VOICE_STT controls this:
 from __future__ import annotations
 
 import os
+import warnings
 from typing import Optional
+
+# speech_recognition pulls in the removed `aifc` module on Python 3.13, which
+# only emits a DeprecationWarning (standard-aifc provides the module). Silence it.
+warnings.filterwarnings("ignore", message="aifc was removed", category=DeprecationWarning)
 
 VOICE_IMPORT_ERROR = ""
 try:
