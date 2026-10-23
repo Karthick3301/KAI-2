@@ -147,6 +147,7 @@ class AppConfig:
     voice_available_default_off: bool = True
     voice_wake_enabled: bool = False
     voice_wake_word: str = "hey kai"
+    voice_stt_mode: str = "auto"
     web_fetch_max_chars: int = 8000
     max_tool_result_chars: int = 4000
     max_tool_iterations: int = 8
@@ -193,11 +194,14 @@ class Config:
             streaming=env_bool("STREAMING", True),
             voice_wake_enabled=env_bool("VOICE_WAKE_ENABLED", False),
             voice_wake_word=os.getenv("VOICE_WAKE_WORD", "hey kai"),
+            voice_stt_mode=(os.getenv("VOICE_STT", "auto").strip().lower() or "auto"),
             web_fetch_max_chars=env_int("WEB_FETCH_MAX_CHARS", 8000),
             max_tool_result_chars=env_int("MAX_TOOL_RESULT_CHARS", 4000),
             max_tool_iterations=env_int("MAX_TOOL_ITERATIONS", 8),
             plain_text=env_bool("PLAIN_TEXT", True),
         )
+        if self.app_config.voice_stt_mode not in ("auto", "offline", "google"):
+            self.app_config.voice_stt_mode = "auto"
         self.persona = self._load_persona()
         Path(self.app_config.workspace_dir).mkdir(parents=True, exist_ok=True)
 
@@ -218,6 +222,11 @@ class Config:
             try:
                 data = json.loads(persona_path.read_text(encoding="utf-8"))
                 persona = Persona.from_dict(data)
+                if data.get("capabilities") == OLD_DEFAULT_CAPABILITIES:
+                    try:
+                        self.save_persona(persona)
+                    except OSError:
+                        pass
             except (OSError, json.JSONDecodeError):
                 pass
         return persona
@@ -225,6 +234,7 @@ class Config:
     def save_persona(self, persona: Optional[Persona] = None) -> None:
         current = persona or self.persona
         path = Path(self.app_config.persona_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(current.to_dict(), indent=2), encoding="utf-8")
 
     def get_system_prompt(self) -> str:
