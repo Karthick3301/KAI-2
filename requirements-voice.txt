@@ -1,0 +1,10 @@
+# Optional voice mode (/voice on in terminal).
+# Core KAI works without these - install only if you want to speak.
+-r requirements.txt
+SpeechRecognition>=3.10.0
+pyttsx3>=2.90
+PyAudio>=0.2.14
+# Offline recognition (local, no Google cloud). Recommended for VOICE_STT=auto/offline:
+pocketsphinx>=5.0.0
+# Python 3.13 needs this for SpeechRecognition audio files:
+standard-aifc>=3.13.0; python_version >= "3.13"
