@@ -33,13 +33,16 @@ One idea runs through everything: **`assistant.py` is the only place that talks 
 | `main.py` | Terminal app. Reads what you type, prints streamed answers, asks yes/no for sensitive actions. |
 | `web_server.py` | Website server using only Python's standard library (`ThreadingHTTPServer`). No Flask or FastAPI. |
 | `index.html` | The whole website: HTML, CSS and JavaScript in one file. |
-| `assistant.py` | The core: system prompt, the three model providers, streaming, history, the tool-calling loop, safety checks. |
+| `assistant.py` | The core: system prompt, the three model providers, streaming, the tool-calling loop, safety checks. Imports `history.py`, `retry.py`, `links.py`. |
+| `history.py` | `Message`, `ChatHistory`, repair/truncate, Gemini sanitizing. |
+| `retry.py` | `request_with_retry` with backoff. |
+| `links.py` | `flatten_markdown_links`, `LinkFlattener`. |
 | `tools.py` | The 10 tools the model can call, plus their schemas and the `execute_tool` dispatcher. |
 | `config.py` | Reads settings from `.env` into small config objects (provider, model name, limits, persona). |
 | `memory.py` | Long-term memory in `memory.json` (`LongTermMemory`). |
 | `chat_store.py` | Several saved chats for the website, one small file each in `chats/` (`ChatStore`). |
 | `documents.py` | Reads PDF, Word and text files, splits them into chunks and picks the useful ones (`ChatDocuments`). |
-| `voice.py` | Optional voice mode (wake word, speech in and out). |
+| `voice.py` | Optional terminal voice mode (wake word, speech in and out). Browser voice is built into `index.html` via Web Speech API. |
 | `test_*.py` | Tests using `unittest`. |
 
 ## 3. Request flow: what happens when you send a message
@@ -196,7 +199,7 @@ Run them all with `python -m unittest`.
 - **Keyword retrieval instead of embeddings.** It works offline and has nothing to install. It will miss answers that use different words from the question.
 - **Local first.** Ollama keeps chats private. Cloud providers are optional.
 - **Approval over blocking.** Web content is useful, so KAI does not forbid it. It asks you before it saves anything after reading the web.
-- **One request at a time.** The "busy" lock keeps the single assistant state consistent. It also means one browser tab chats at a time.
+- **One request at a time.** The "busy" lock keeps the single assistant state consistent (`409 KAI is busy` if a second tab asks). It also means one browser tab chats at a time. Combined with localhost-only binding and no login, this is why KAI must stay on your own computer.
 
 ## 14. Ideas for next steps
 

@@ -28,7 +28,7 @@ It can search the web, read your documents, use tools, and remember facts you gi
 - "Used 2 tools" steps you can expand to see what KAI did
 - Works on a phone-sized screen
 
-**Voice** (optional): speak to KAI and hear replies with `/voice on` in the terminal.
+**Voice** (optional): terminal `/voice on` needs `requirements-voice.txt`. Browser has built-in Mic (speak to type) + Speak (read replies) buttons using your browser's speech — no install, works best in Chrome/Edge. By default terminal (`VOICE_STT=auto`) tries offline first, then Google cloud. Set `VOICE_STT=offline` (+ `pocketsphinx`) to stay fully local — Google mode sends audio to Google.
 
 ## Safety choices
 
@@ -49,6 +49,8 @@ cd KAI
 python -m venv .venv
 .venv\Scripts\activate
 python -m pip install -r requirements.txt
+# optional voice mode only:
+# python -m pip install -r requirements-voice.txt
 copy env.example .env
 ```
 
@@ -105,7 +107,10 @@ How the pieces fit together is explained in [ARCHITECTURE.md](ARCHITECTURE.md).
 |---|---|
 | `main.py` | Terminal app |
 | `web_server.py`, `index.html` | Website (small local server and the chat page) |
-| `assistant.py` | The core: providers, streaming, history, tool loop, safety checks |
+| `assistant.py` | The core: providers, streaming, tool loop, safety checks (imports `history.py`, `retry.py`, `links.py`) |
+| `history.py` | Messages, repair, truncation, Gemini sanitizing |
+| `retry.py` | HTTP retry with backoff |
+| `links.py` | Plain-text link flattening |
 | `tools.py` | Tools the model can call |
 | `documents.py` | Reads PDF/Word/text files and finds the passages that match a question |
 | `chat_store.py` | Saved chats for the website |
@@ -125,7 +130,7 @@ python -m unittest test_config test_documents test_web_server test_links test_we
 ## Known limits
 
 - Web search uses DuckDuckGo through a scraping package, so it can be rate-limited if you search too fast.
-- The website has no login and handles one chat at a time. It is made for your own computer. Do not put it on the internet as it is.
+- Local-only by design: the website binds `127.0.0.1`, checks `Host`/`Origin`, has no login, and answers one chat at a time (second tab gets `409 KAI is busy`). Do not expose it to the internet — use an SSH tunnel if you need remote access.
 - Scanned PDFs (pictures of text) cannot be read.
 - Small local models make mistakes and can invent details. Check important answers, especially anything about people or facts.
 
