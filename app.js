@@ -524,8 +524,12 @@ function renderMemories(state) {
 }
 
 function setStatus(busyNow) {
-  const box = $("status"); box.classList.toggle("busy", busyNow);
-  $("statusText").textContent = busyNow ? "Thinking..." : (localInfo.local ? "On this computer - " : localInfo.provider + " cloud - ") + localInfo.model;
+  const box = $("status");
+  if (box) box.classList.toggle("busy", busyNow);
+  const stText = $("statusText");
+  if (stText) {
+    stText.textContent = busyNow ? "Thinking..." : (localInfo.local ? "Local" : "Cloud");
+  }
 }
 function render(state) {
   localInfo = { local: state.provider === "ollama", provider: state.provider, model: state.model };
@@ -1028,6 +1032,7 @@ $("setBtn").onclick = async () => {
   dlg.showModal();
 };
 $("sClose").onclick = () => dlg.close();
+if ($("sCloseTop")) $("sCloseTop").onclick = () => dlg.close();
 async function savePersona(extra) {
   const res = await api("/api/persona", Object.assign({ name: $("sName").value, role: $("sRole").value, tone: $("sTone").value, instructions: $("sInstr").value }, extra || {}));
   if (res.error) { setMsg(res.error); return null; }

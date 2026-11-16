@@ -149,15 +149,28 @@
   .side-foot .btn { display: flex; align-items: center; gap: 10px; text-align: left; width: 100%; padding: 8px 10px; }
 
   .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
   #chatTitle { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .spacer { flex: 1; }
   .status {
-    display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted);
-    border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px 3px 10px; white-space: nowrap; max-width: 44vw;
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; white-space: nowrap; max-width: 44vw;
+    background: var(--surface);
   }
   .status span { overflow: hidden; text-overflow: ellipsis; }
-  .status i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+  .status i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
   .status.busy i { background: var(--amber); animation: pulse 1.1s ease-in-out infinite; }
   @keyframes pulse { 50% { transform: scale(1.7); opacity: .45; } }
   #toolsBtn[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
@@ -444,8 +457,11 @@
   .doc { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 4px 3px 12px; background: var(--surface); max-width: 100%; }
   .doc span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
   .doc button { border: 0; background: transparent; padding: 0 8px; color: var(--muted); }
-  .composer { max-width: 740px; margin: 0 auto; display: flex; gap: 6px; align-items: flex-end; background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 8px; box-shadow: var(--shadow); transition: border-color .15s; }
-  .composer:focus-within { border-color: var(--accent); }
+  .composer { max-width: 740px; margin: 0 auto; display: flex; gap: 6px; align-items: flex-end; background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 8px; box-shadow: var(--shadow); transition: border-color .15s, box-shadow .15s; }
+  .composer:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), var(--shadow);
+  }
   .composer textarea { flex: 1; resize: none; border: 0; outline: 0; background: transparent; max-height: 180px; padding: 8px 6px; line-height: 1.5; }
   .round { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; padding: 0; flex: none; }
   #send { background: var(--accent); color: var(--accent-ink); border: 0; }
@@ -453,6 +469,35 @@
   #attach { background: transparent; border: 0; color: var(--muted); }
   #attach:hover:not(:disabled) { color: var(--accent); background: var(--accent-soft); }
   .hint { max-width: 740px; margin: 8px auto 0; text-align: center; font-size: 12.5px; color: var(--muted); }
+
+  /* ---------- Sleek Custom Scrollbars ---------- */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.32);
+  }
+  body[data-theme="light"] * {
+    scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+  }
+  body[data-theme="light"] ::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.18);
+  }
+  body[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.34);
+  }
 
   /* memory drawer + dialog */
   #memory { width: 330px; flex: none; display: none; flex-direction: column; gap: 12px; padding: 16px; background: var(--surface); border-left: 1px solid var(--line); overflow-y: auto; }
@@ -483,10 +528,38 @@
   .header-model-select { border: 0; background: transparent; color: var(--ink); font-size: 12px; font-weight: 500; cursor: pointer; outline: none; padding-right: 4px; max-width: 170px; text-overflow: ellipsis; }
   .header-model-select option { background: var(--surface); color: var(--ink); }
 
-  .field { width: 100%; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--ground); }
+  /* Settings Cards */
+  .setting-card {
+    background: var(--ground);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: border-color .15s;
+  }
+  .setting-card:hover {
+    border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+  }
+  .setting-card-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--accent);
+    margin-bottom: 4px;
+    user-select: none;
+  }
+  .setting-card label {
+    margin: 8px 0 3px;
+  }
+
+  .field { width: 100%; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--ground); box-sizing: border-box; }
   textarea.field { resize: vertical; min-height: 80px; max-height: 240px; }
   dialog { border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--ink); padding: 0; width: min(540px, 94vw); box-shadow: var(--shadow); }
-  dialog::backdrop { background: rgba(5, 12, 16, .55); }
+  dialog::backdrop { background: rgba(5, 12, 16, .55); backdrop-filter: blur(4px); }
   dialog form { padding: 20px 22px 22px; max-height: 88vh; overflow-y: auto; }
   label, .lbl { display: block; font-size: 13px; color: var(--muted); margin: 14px 0 5px; }
   fieldset { border: 0; padding: 0; margin: 0; }
@@ -640,45 +713,67 @@
 
 <dialog id="settings">
   <form method="dialog" id="setForm">
-    <h3>Settings</h3>
-    <label for="sName">Name</label>
-    <input class="field" id="sName" maxlength="40" required>
-    <label for="sRole">Role (what KAI is)</label>
-    <input class="field" id="sRole" maxlength="200">
-    <label for="sTone">Tone</label>
-    <input class="field" id="sTone" maxlength="100">
-    <label for="sInstr">Extra instructions (optional, replaces the default intro)</label>
-    <textarea class="field" id="sInstr" maxlength="2000"></textarea>
-    <label for="sModel">Model</label>
-    <select class="field" id="sModel"></select>
-    <p class="note" id="sModelNote" style="margin-top:6px"></p>
-    <label for="sVoice">AI voice (browser speech)</label>
-    <div style="display:flex;gap:8px">
-      <select class="field" id="sVoice" style="flex:1"></select>
-      <button type="button" class="btn" id="vTest">Test</button>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+      <h3 style="font-size:17px; font-weight:700;">Settings</h3>
+      <button type="button" class="btn ghost" id="sCloseTop" aria-label="Close" style="padding:2px 8px; font-size:18px;">×</button>
     </div>
-    <p class="note" style="margin-top:6px">Male/female depends on voices installed in your OS/browser. On Windows add more via Settings - Accessibility - Narrator - Add voices.</p>
-    <div class="actions" style="margin-top:12px"><button type="button" class="btn" id="sReset">Reset persona</button></div>
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:14px; padding-top:12px; border-top:1px solid var(--line);">
-      <div>
-        <label for="sSound" style="margin:0 0 2px 0; font-weight:600; font-size:13px; color:var(--ink);">JARVIS HUD Sound</label>
-        <div class="note" style="margin:0; font-size:11px;">Futuristic audio chime on reply completion</div>
-      </div>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <button type="button" class="btn ghost" id="sSoundTest" style="padding:4px 8px; font-size:11.5px;">Test Chime</button>
-        <input type="checkbox" id="sSound" style="width:18px; height:18px; cursor:pointer;" checked>
+
+    <!-- Card 1: Identity & Persona -->
+    <div class="setting-card">
+      <div class="setting-card-title">Identity & Persona</div>
+      <label for="sName" style="margin-top:0">Name</label>
+      <input class="field" id="sName" maxlength="40" required>
+      <label for="sRole">Role (what KAI is)</label>
+      <input class="field" id="sRole" maxlength="200">
+      <label for="sTone">Tone</label>
+      <input class="field" id="sTone" maxlength="100">
+      <label for="sInstr">Extra instructions (optional)</label>
+      <textarea class="field" id="sInstr" maxlength="2000" placeholder="e.g. Address me as Karthick, explain first principles..."></textarea>
+      <div style="display:flex; justify-content:flex-end; margin-top:4px;">
+        <button type="button" class="btn ghost" id="sReset" style="font-size:12px; padding:4px 10px;">Reset persona</button>
       </div>
     </div>
-    <hr>
-    <fieldset>
-      <legend class="lbl">Colour</legend>
-      <div class="swatches" id="swatches">
-        <label><input type="radio" name="accent" value="peacock"><span class="dot" style="--c:#0b6e8a"></span>Peacock</label>
-        <label><input type="radio" name="accent" value="marigold"><span class="dot" style="--c:#b87300"></span>Marigold</label>
-        <label><input type="radio" name="accent" value="plum"><span class="dot" style="--c:#8a3f7d"></span>Plum</label>
-        <label><input type="radio" name="accent" value="forest"><span class="dot" style="--c:#2f7d4f"></span>Forest</label>
+
+    <!-- Card 2: AI Engine & Voice -->
+    <div class="setting-card">
+      <div class="setting-card-title">AI Engine & Speech</div>
+      <label for="sModel" style="margin-top:0">Model</label>
+      <select class="field" id="sModel"></select>
+      <p class="note" id="sModelNote" style="margin-top:4px; font-size:11.5px;"></p>
+      
+      <label for="sVoice">AI voice (browser speech)</label>
+      <div style="display:flex; gap:8px">
+        <select class="field" id="sVoice" style="flex:1"></select>
+        <button type="button" class="btn" id="vTest">Test</button>
       </div>
-    </fieldset>
+      <p class="note" style="margin-top:4px; font-size:11.5px;">Natural voices depend on voices installed in your browser/OS (e.g. Microsoft Online Natural).</p>
+      
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-top:8px; padding-top:10px; border-top:1px solid var(--line);">
+        <div>
+          <label for="sSound" style="margin:0 0 2px 0; font-weight:600; font-size:13px; color:var(--ink);">JARVIS HUD Sound</label>
+          <div class="note" style="margin:0; font-size:11px;">Futuristic audio chime on reply completion</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button type="button" class="btn ghost" id="sSoundTest" style="padding:4px 8px; font-size:11.5px;">Test Chime</button>
+          <input type="checkbox" id="sSound" style="width:18px; height:18px; cursor:pointer;" checked>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 3: Appearance -->
+    <div class="setting-card">
+      <div class="setting-card-title">Appearance</div>
+      <fieldset style="border:0; padding:0; margin:0;">
+        <legend class="lbl" style="margin-top:0; font-size:12.5px;">Accent Colour</legend>
+        <div class="swatches" id="swatches" style="margin-top:6px;">
+          <label><input type="radio" name="accent" value="peacock"><span class="dot" style="--c:#0b6e8a"></span>Peacock</label>
+          <label><input type="radio" name="accent" value="marigold"><span class="dot" style="--c:#b87300"></span>Marigold</label>
+          <label><input type="radio" name="accent" value="plum"><span class="dot" style="--c:#8a3f7d"></span>Plum</label>
+          <label><input type="radio" name="accent" value="forest"><span class="dot" style="--c:#2f7d4f"></span>Forest</label>
+        </div>
+      </fieldset>
+    </div>
+
     <div class="note" id="setMsg" role="status"></div>
     <div class="actions sticky">
       <button type="button" class="btn" id="sClose">Close</button>
