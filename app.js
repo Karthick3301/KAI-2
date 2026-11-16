@@ -1087,7 +1087,7 @@ function cleanForSpeech(text) {
   s = s.replace(/\bF#/g, "F Sharp");
   s = s.replace(/#(\d+)/g, "number $1");
 
-  // Friendly expansion of Latin abbreviations
+  // Friendly expansion of Latin abbreviations so they don't stutter on periods
   s = s.replace(/\be\.g\.,?\s*/gi, "for example, ");
   s = s.replace(/\bi\.e\.,?\s*/gi, "that is, ");
   s = s.replace(/\betc\./gi, "etcetera");
@@ -1116,7 +1116,8 @@ function cleanForSpeech(text) {
   // Horizontal rules (---, ***, ___)
   s = s.replace(/^[-*_]{3,}\s*$/gm, "");
 
-  // Markdown headers: strip leading # markers (#, ##, ###, etc.)
+  // Headers: replace leading # markers and add a natural colon pause
+  s = s.replace(/^#{1,6}\s*(.+)$/gm, "$1: ");
   s = s.replace(/^#{1,6}\s+/gm, "");
 
   // Bold & Italic & Strikethrough
@@ -1132,6 +1133,9 @@ function cleanForSpeech(text) {
   // Blockquotes and bullet markers at start of line
   s = s.replace(/^>\s*/gm, "");
   s = s.replace(/^[\s]*[-+•]\s+/gm, "");
+
+  // Numbered list prefixes: convert "1. " to "1, " so TTS doesn't treat the number as a full stop sentence
+  s = s.replace(/(?:^|\n)\s*(\d+)\.\s+/g, "\n$1, ");
 
   // Table syntax: remove pipe dividers
   s = s.replace(/\|/g, " ");
@@ -1149,14 +1153,30 @@ function cleanForSpeech(text) {
   // Colons in headers/lists: normalize spacing
   s = s.replace(/\s*:\s*/g, ": ");
 
+  // Ampersand
+  s = s.replace(/&/g, " and ");
+
+  // Slashes between words (HTML/CSS -> HTML and CSS)
+  s = s.replace(/([a-zA-Z])\/([a-zA-Z])/g, "$1 and $2");
+
+  // Ellipsis: replace with comma pause instead of long silence
+  s = s.replace(/\.{2,}/g, ", ");
+
+  // Exclamation marks & question marks normalization
+  s = s.replace(/!{2,}/g, "!");
+  s = s.replace(/\?{2,}/g, "?");
+  s = s.replace(/!\?/g, "?");
+
   // Clean punctuation anomalies like ", ." or ",,"
   s = s.replace(/,\s*\./g, ".");
+  s = s.replace(/\.\s*,/g, ".");
   s = s.replace(/,\s*,+/g, ",");
+  s = s.replace(/:\s*:/g, ":");
 
   // Collapse excessive whitespace and newlines
   s = s.replace(/[ \t]+/g, " ");
   s = s.replace(/\s*\n\s*/g, " ");
-  s = s.replace(/\.\s*\.+/g, ".");
+  s = s.replace(/\s*([,;:?.!])/g, "$1");
 
   return s.trim();
 }
@@ -1191,12 +1211,12 @@ function speakUtter(text) {
   try {
     const cleaned = cleanForSpeech(text);
     if (!cleaned || !/[a-zA-Z0-9]/.test(cleaned)) return;
-    // Standard utterances speak fluently up to ~450 chars; only split if extraordinarily long
-    if (cleaned.length > 450) {
+    // Standard utterances speak fluently up to ~800 chars; only split if extraordinarily long
+    if (cleaned.length > 800) {
       let rest = cleaned;
       while (rest.length > 0) {
-        let cut = rest.length > 450 ? Math.max(rest.lastIndexOf(" ", 450), 120) : rest.length;
-        if (cut <= 0 || cut > 450) cut = Math.min(450, rest.length);
+        let cut = rest.length > 800 ? Math.max(rest.lastIndexOf(" ", 800), 200) : rest.length;
+        if (cut <= 0 || cut > 800) cut = Math.min(800, rest.length);
         const part = rest.slice(0, cut).trim();
         rest = rest.slice(cut).trim();
         if (part && /[a-zA-Z0-9]/.test(part)) enqueueUtter(part);
@@ -1210,9 +1230,15 @@ function speakUtter(text) {
 function findSentenceSplit(str, minLen) {
   if (!str || str.length < minLen) return -1;
 
-  // 1. Natural sentence ending (. ! ?) followed by whitespace or newline
-  // Avoid numbers before period ("1.", "2.5") and common abbreviations
-  const regex = /([\s\S]{25,}?[^0-9\s][.!?]["']?)(?:\s|\n|$)/;
+  // Paragraph break (\n\n) if buffer is at least minLen
+  const pBreak = str.indexOf("\n\n");
+  if (pBreak >= minLen) {
+    return pBreak + 2;
+  }
+
+  // Find sentence ending after minLen characters
+  // Match period, exclamation, or question mark followed by whitespace or newline
+  const regex = new RegExp(`([\\s\\S]{${Math.max(15, minLen - 30)},}?[^0-9\\s][.!?]["']?)(?:\\s|\\n|$)`);
   const m = str.match(regex);
   if (m) {
     const candidate = m[1];
@@ -1222,24 +1248,15 @@ function findSentenceSplit(str, minLen) {
     }
   }
 
-  // 2. Paragraph break (\n\n) if buffer is at least minLen
-  const pBreak = str.indexOf("\n\n");
-  if (pBreak >= minLen) {
-    return pBreak + 2;
-  }
-
-  // 3. Fallback if buffer is getting large (> 260 chars): split at any sentence boundary
-  if (str.length > 260) {
+  // Hard overflow (> 650 chars): cut at last sentence boundary or space
+  if (str.length > 650) {
     const fallbackRegex = /([\s\S]+?[^0-9\s][.!?]["']?)(?:\s|\n|$)/;
     const fm = str.match(fallbackRegex);
-    if (fm && fm[1].trim().length >= 25) {
+    if (fm && fm[1].trim().length >= 100) {
       return fm[0].length;
     }
-    // Hard overflow fallback (> 380 chars): cut cleanly at last space
-    if (str.length > 380) {
-      const lastSpace = str.lastIndexOf(" ", 340);
-      if (lastSpace >= 100) return lastSpace + 1;
-    }
+    const lastSpace = str.lastIndexOf(" ", 600);
+    if (lastSpace >= 200) return lastSpace + 1;
   }
 
   return -1;
@@ -1314,8 +1331,8 @@ function speakChunk(piece) {
         break;
       }
 
-      // First sentence starts quickly (minLen ~50); subsequent sentences group into smooth thoughts (minLen ~160)
-      const minLen = isFirstUtterance ? 50 : 160;
+      // First sentence starts quickly (minLen ~90); subsequent sentences group into smooth thoughts (minLen ~380)
+      const minLen = isFirstUtterance ? 90 : 380;
       const cutIdx = findSentenceSplit(speakBuf, minLen);
       if (cutIdx > 0) {
         const chunk = speakBuf.slice(0, cutIdx);
