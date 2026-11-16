@@ -542,8 +542,7 @@ function render(state) {
 }
 function setBusy(v) { busy = v; sendBtn.disabled = v; $("newBtn").disabled = v; $("stop").hidden = !v; setStatus(v); }
 function stopStream() {
-  try { window.speechSynthesis.cancel(); } catch (e) {}
-  speakBuf = "";
+  speakReset();
   if (streamAbort) { try { streamAbort.abort(); } catch (e) {} }
 }
 
@@ -1060,11 +1059,15 @@ $("sReset").onclick = async () => { if (await savePersona({ reset: true })) setM
 let speakOn = load("kai-speak") === "on";
 function applySpeak() { $("speak").setAttribute("aria-pressed", String(speakOn)); }
 let speakBuf = "";
+let inCodeBlock = false;
+let spokeCodeNotice = false;
 let activeUtterances = 0;
+
 function setSpeaking(active) {
   const btn = $("speak");
   if (btn) btn.classList.toggle("speaking", active);
 }
+
 function chosenVoice() {
   try {
     if (!("speechSynthesis" in window)) return null;
@@ -1073,18 +1076,158 @@ function chosenVoice() {
     return window.speechSynthesis.getVoices().find((v) => v.voiceURI === uri) || null;
   } catch (e) { return null; }
 }
-function speakUtter(text) {
+
+function cleanForSpeech(text) {
+  if (!text) return "";
+  let s = String(text);
+
+  // Friendly tech abbreviations & symbols
+  s = s.replace(/\bC#/g, "C Sharp");
+  s = s.replace(/\bF#/g, "F Sharp");
+  s = s.replace(/#(\d+)/g, "number $1");
+
+  // Code blocks: summarize to avoid reciting code syntax
+  s = s.replace(/```[\s\S]*?```/g, " code snippet. ");
+
+  // Inline code: strip backticks
+  s = s.replace(/`([^`]+)`/g, "$1");
+  s = s.replace(/`/g, "");
+
+  // Markdown images: ![alt](url) -> alt
+  s = s.replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1");
+
+  // Markdown links: [anchor text](url) -> anchor text
+  s = s.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+
+  // Raw URLs: replace with 'link'
+  s = s.replace(/https?:\/\/\S+/gi, "link");
+
+  // Horizontal rules (---, ***, ___)
+  s = s.replace(/^[-*_]{3,}\s*$/gm, "");
+
+  // Markdown headers: strip leading # markers (#, ##, ###, etc.)
+  s = s.replace(/^#{1,6}\s+/gm, "");
+
+  // Bold & Italic & Strikethrough
+  s = s.replace(/\*\*([^*]+)\*\*/g, "$1");
+  s = s.replace(/__([^_]+)__/g, "$1");
+  s = s.replace(/\*([^*]+)\*/g, "$1");
+  s = s.replace(/_([^_]+)_/g, "$1");
+  s = s.replace(/~~([^~]+)~~/g, "$1");
+
+  // Clean any stray formatting characters (*, _, #, ~, `)
+  s = s.replace(/[*_#~`]/g, "");
+
+  // Blockquotes and bullet markers at start of line
+  s = s.replace(/^>\s*/gm, "");
+  s = s.replace(/^[\s]*[-+•]\s+/gm, "");
+
+  // Table syntax: remove pipe dividers
+  s = s.replace(/\|/g, " ");
+
+  // HTML tags
+  s = s.replace(/<[^>]+>/g, "");
+
+  // LaTeX math: $$...$$ or $...$ -> keep inner formula, strip $
+  s = s.replace(/\${1,2}([^$]+)\${1,2}/g, "$1");
+  s = s.replace(/\$/g, "");
+
+  // Escaped markdown characters (\*, \_, \[, etc.)
+  s = s.replace(/\\([*_{}[\]()#+\-.!~`])/g, "$1");
+
+  // Collapse excessive whitespace
+  s = s.replace(/[ \t]+/g, " ");
+  s = s.replace(/\n+/g, " ");
+
+  return s.trim();
+}
+
+function enqueueUtter(str) {
   try {
-    const u = new SpeechSynthesisUtterance(String(text).slice(0, 500));
-    u.rate = 1; u.volume = 0.9;
+    if (!("speechSynthesis" in window)) return;
+    const u = new SpeechSynthesisUtterance(str);
+    u.rate = 1;
+    u.volume = 0.9;
     const v = chosenVoice();
     if (v) u.voice = v;
     u.onstart = () => { activeUtterances++; setSpeaking(true); };
     u.onend = () => { activeUtterances = Math.max(0, activeUtterances - 1); if (!activeUtterances) setSpeaking(false); };
     u.onerror = () => { activeUtterances = Math.max(0, activeUtterances - 1); if (!activeUtterances) setSpeaking(false); };
+    if (window.speechSynthesis.paused) {
+      try { window.speechSynthesis.resume(); } catch (e) {}
+    }
     window.speechSynthesis.speak(u);
   } catch (e) {}
 }
+
+function speakUtter(text) {
+  try {
+    const cleaned = cleanForSpeech(text);
+    if (!cleaned || !/[a-zA-Z0-9]/.test(cleaned)) return;
+    // Keep individual utterances concise for near-instant speech synthesis start
+    if (cleaned.length > 240) {
+      let rest = cleaned;
+      while (rest.length > 0) {
+        let cut = rest.length > 240 ? Math.max(rest.lastIndexOf(" ", 240), 60) : rest.length;
+        if (cut <= 0 || cut > 240) cut = Math.min(240, rest.length);
+        const part = rest.slice(0, cut).trim();
+        rest = rest.slice(cut).trim();
+        if (part && /[a-zA-Z0-9]/.test(part)) enqueueUtter(part);
+      }
+    } else {
+      enqueueUtter(cleaned);
+    }
+  } catch (e) {}
+}
+
+function findSplitIndex(str) {
+  if (!str || str.length < 3) return -1;
+
+  // 1. Natural pause on line break
+  const nlIdx = str.indexOf("\n");
+  if (nlIdx >= 0 && nlIdx < 160) {
+    if (str.slice(0, nlIdx).trim().length > 0) {
+      return nlIdx + 1;
+    }
+  }
+
+  // 2. Strong sentence endings: ! or ? followed by whitespace or end
+  const strongMatch = str.match(/^([\s\S]+?[!?]+["']?)(?:\s|$)/);
+  if (strongMatch && strongMatch[1].trim().length >= 3) {
+    return strongMatch[0].length;
+  }
+
+  // 3. Period sentence ending: avoid digits before period ("1.", "2.5") and common abbreviations
+  const periodRegex = /([\s\S]+?[^0-9\s]\.["']?)(?:\s|$)/;
+  const pMatch = str.match(periodRegex);
+  if (pMatch) {
+    const candidate = pMatch[1];
+    const isAbbr = /(?:e\.g|i\.e|etc|vs|dr|mr|mrs|ms|prof|inc|ltd)\.$/i.test(candidate.trim());
+    if (!isAbbr && candidate.trim().length >= 3) {
+      return pMatch[0].length;
+    }
+  }
+
+  // 4. Early clause boundary for low latency (comma, colon, semicolon, dash)
+  // Splits early (>= 30 chars) so speech begins almost simultaneously with text streaming
+  if (str.length >= 30) {
+    const clauseMatch = str.match(/^([\s\S]{18,80}?(?:[,;:—]|\s-\s))(?:\s|$)/);
+    if (clauseMatch && clauseMatch[1].trim().length >= 15) {
+      return clauseMatch[0].length;
+    }
+  }
+
+  // 5. Overflow fallback: if buffer > 160 chars without punctuation, cut cleanly at last space
+  if (str.length > 160) {
+    const lastSpace = str.lastIndexOf(" ", 160);
+    if (lastSpace >= 40) {
+      return lastSpace + 1;
+    }
+  }
+
+  return -1;
+}
+
 function fillVoices() {
   try {
     const sel = $("sVoice"); if (!sel) return;
@@ -1107,37 +1250,88 @@ function fillVoices() {
     if (!voices.length) { const o = document.createElement("option"); o.value = ""; o.textContent = "No voices found in this browser"; sel.appendChild(o); }
   } catch (e) {}
 }
-function speakReset() { speakBuf = ""; activeUtterances = 0; setSpeaking(false); try { window.speechSynthesis.cancel(); } catch (e) {} }
+
+function speakReset() {
+  speakBuf = "";
+  inCodeBlock = false;
+  spokeCodeNotice = false;
+  activeUtterances = 0;
+  setSpeaking(false);
+  try { window.speechSynthesis.cancel(); } catch (e) {}
+}
+
 function speakChunk(piece) {
   try {
     if (!speakOn || !piece || !("speechSynthesis" in window)) return;
     speakBuf += piece;
+
     for (;;) {
-      const m = speakBuf.match(/^(.+?[.!?]+["']?\s|.+?\n)/);
-      if (m && m[1].trim().length >= 3) { const s = m[1].trim(); speakBuf = speakBuf.slice(m[1].length); speakUtter(s); continue; }
-      if (speakBuf.length > 280) {
-        let cut = Math.max(speakBuf.lastIndexOf(" ", 280), 100);
-        const s = speakBuf.slice(0, cut).trim(); speakBuf = speakBuf.slice(cut);
-        if (s) speakUtter(s); else break;
+      speakBuf = speakBuf.replace(/^[\r\n]+/, "");
+
+      // Handle code fences during streaming
+      const fenceIdx = speakBuf.indexOf("```");
+      if (fenceIdx !== -1) {
+        if (!inCodeBlock) {
+          const before = speakBuf.slice(0, fenceIdx);
+          speakBuf = speakBuf.slice(fenceIdx + 3);
+          inCodeBlock = true;
+          if (before.trim()) speakUtter(before);
+          if (!spokeCodeNotice) {
+            speakUtter("Here is the code snippet.");
+            spokeCodeNotice = true;
+          }
+          continue;
+        } else {
+          speakBuf = speakBuf.slice(fenceIdx + 3);
+          inCodeBlock = false;
+          continue;
+        }
+      }
+
+      if (inCodeBlock) {
+        // While code streams, avoid reciting raw code syntax
+        if (speakBuf.length > 300) {
+          speakBuf = speakBuf.slice(-150);
+        }
+        break;
+      }
+
+      const cutIdx = findSplitIndex(speakBuf);
+      if (cutIdx > 0) {
+        const chunk = speakBuf.slice(0, cutIdx);
+        speakBuf = speakBuf.slice(cutIdx);
+        speakUtter(chunk);
+        continue;
       }
       break;
     }
   } catch (e) {}
 }
+
 function speakFlush() {
   try {
     if (!speakOn || !("speechSynthesis" in window)) { speakBuf = ""; return; }
-    const s = speakBuf.trim(); speakBuf = "";
-    if (s) speakUtter(s);
+    if (!inCodeBlock && speakBuf.trim()) {
+      speakUtter(speakBuf);
+    }
+    speakBuf = "";
+    inCodeBlock = false;
+    spokeCodeNotice = false;
   } catch (e) { speakBuf = ""; }
 }
-function speakReply(text) { speakChunk(text || ""); speakFlush(); }
+
+function speakReply(text) {
+  if (!speakOn || !text) return;
+  speakReset();
+  speakChunk(text);
+  speakFlush();
+}
 $("speak").onclick = () => { speakOn = !speakOn; store("kai-speak", speakOn ? "on" : "off"); applySpeak(); if (!speakOn) speakReset(); };
 applySpeak();
 $("sVoice").addEventListener("change", () => { store("kai-voice", $("sVoice").value || undefined); });
 $("vTest").onclick = () => {
   store("kai-voice", $("sVoice").value || undefined);
-  try { window.speechSynthesis.cancel(); } catch (e) {}
+  speakReset();
   const wasOn = speakOn; speakOn = true;
   speakUtter("Hello, I am " + ($("sName").value || "KAI") + ". This is my voice.");
   speakOn = wasOn;
