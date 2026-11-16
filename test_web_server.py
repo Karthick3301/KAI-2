@@ -1,6 +1,7 @@
 import http.client
 import json
 import threading
+import time
 import unittest
 from types import SimpleNamespace
 
@@ -14,6 +15,10 @@ class FakeMemory:
     def add(self, text):
         self.facts.append(text)
         return "Remembered"
+
+    def update(self, index, text):
+        self.facts[index - 1] = text
+        return "Updated"
 
     def remove(self, index):
         self.facts.pop(index - 1)
@@ -29,6 +34,7 @@ class FakeAssistant:
         from config import Persona
         self.persona = Persona(name="KAI", role="helper")
         self.model_config = SimpleNamespace(name="fake-model", provider="fake", ollama_base_url="http://x")
+        self.config = SimpleNamespace(gemini_api_key=None, mistral_api_key=None)
         self.tools_enabled = True
         self.memory = FakeMemory()
         self.confirm = None
@@ -205,8 +211,10 @@ class WebServerTests(ServerCase):
     def test_memory_tools_and_clear(self):
         _, data = self.request("POST", "/api/memory", {"action": "add", "text": "likes chess"})
         self.assertIn("likes chess", json.loads(data)["memories"])
+        _, data = self.request("POST", "/api/memory", {"action": "edit", "index": 2, "text": "likes chess & coffee"})
+        self.assertIn("likes chess & coffee", json.loads(data)["memories"])
         _, data = self.request("POST", "/api/memory", {"action": "remove", "index": 1})
-        self.assertEqual(json.loads(data)["memories"], ["likes chess"])
+        self.assertEqual(json.loads(data)["memories"], ["likes chess & coffee"])
         _, data = self.request("POST", "/api/tools", {"enabled": False})
         self.assertFalse(json.loads(data)["tools"])
         resp, _ = self.request("POST", "/api/memory", {"action": "remove", "index": "x"})
@@ -341,6 +349,8 @@ class SavedChatTests(unittest.TestCase):
         for bad in ("../../etc/passwd", "", "UPPER", "a" * 40, "x y"):
             self.assertEqual(self.post("/api/chat/open", {"id": bad})[0], 404)
             self.assertEqual(self.post("/api/chat/delete", {"id": bad})[0], 404)
+            self.assertEqual(self.post("/api/chat/rename", {"id": bad, "title": "test"})[0], 404)
+            self.assertEqual(self.post("/api/chat/pin", {"id": bad, "pinned": True})[0], 404)
 
     def test_store_titles_are_trimmed(self):
         cid = self.store.new_id()
@@ -348,6 +358,41 @@ class SavedChatTests(unittest.TestCase):
         row = [r for r in self.store.list() if r["id"] == cid][0]
         self.assertTrue(row["title"].endswith("..."))
         self.assertLessEqual(len(row["title"]), 51)
+
+    def test_rename_and_pin_chats(self):
+        _, chats_resp = self.post("/api/chats")
+        chat_id = chats_resp["chats"][0]["id"]
+
+        # Rename chat
+        status, snap = self.post("/api/chat/rename", {"id": chat_id, "title": "My Custom Title"})
+        self.assertEqual(status, 200)
+        chat = [c for c in snap["chats"] if c["id"] == chat_id][0]
+        self.assertEqual(chat["title"], "My Custom Title")
+        self.assertEqual(chat["custom_title"], "My Custom Title")
+
+        # Create a second chat
+        cid2 = self.store.new_id()
+        self.store.path(cid2).write_text(json.dumps({"role": "user", "content": "Second chat", "timestamp": time.time() + 10}) + "\n", encoding="utf-8")
+        status, snap = self.post("/api/chats")
+        # cid2 is newer, so cid2 is first
+        self.assertEqual(snap["chats"][0]["id"], cid2)
+
+        # Pin the first chat: it should now become first despite being older
+        status, snap = self.post("/api/chat/pin", {"id": chat_id, "pinned": True})
+        self.assertEqual(status, 200)
+        self.assertEqual(snap["chats"][0]["id"], chat_id)
+        self.assertTrue(snap["chats"][0]["pinned"])
+
+        # Unpin
+        status, snap = self.post("/api/chat/pin", {"id": chat_id, "pinned": False})
+        self.assertEqual(status, 200)
+        self.assertEqual(snap["chats"][0]["id"], cid2)
+        self.assertFalse([c for c in snap["chats"] if c["id"] == chat_id][0]["pinned"])
+
+        # Delete removes meta
+        self.assertTrue(self.store.meta_path(chat_id).exists())
+        self.post("/api/chat/delete", {"id": chat_id})
+        self.assertFalse(self.store.meta_path(chat_id).exists())
 
 
 if __name__ == "__main__":

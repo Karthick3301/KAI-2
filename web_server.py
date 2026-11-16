@@ -145,6 +145,12 @@ class Handler(BaseHTTPRequestHandler):
         return True
 
     def _reject(self) -> None:
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > 0:
+                self.rfile.read(min(length, MAX_BODY_BYTES))
+        except Exception:
+            pass
         self._json({"error": "Forbidden"}, 403)
 
     # ---------- helpers ----------
@@ -300,6 +306,11 @@ class Handler(BaseHTTPRequestHandler):
             action = data.get("action")
             if action == "add":
                 result = a.memory.add(str(data.get("text", ""))[:500])
+            elif action in ("edit", "update"):
+                try:
+                    result = a.memory.update(int(data.get("index")), str(data.get("text", ""))[:500])
+                except (TypeError, ValueError):
+                    return self._json({"error": "index must be a number"}, 400)
             elif action == "remove":
                 try:
                     result = a.memory.remove(int(data.get("index")))
@@ -357,6 +368,18 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"error": "Chat not found"}, 404)
                 if chat_id == state.chat_id:
                     state.open_chat(store.latest_id() or store.new_id())
+            elif path == "/api/chat/rename":
+                chat_id = str(data.get("id", ""))
+                title = str(data.get("title", "")).strip()[:64]
+                if not store.valid_id(chat_id) or not store.exists(chat_id):
+                    return self._json({"error": "Chat not found"}, 404)
+                store.set_meta(chat_id, {"title": title})
+            elif path == "/api/chat/pin":
+                chat_id = str(data.get("id", ""))
+                pinned = bool(data.get("pinned", False))
+                if not store.valid_id(chat_id) or not store.exists(chat_id):
+                    return self._json({"error": "Chat not found"}, 404)
+                store.set_meta(chat_id, {"pinned": pinned})
             else:
                 return self._json({"error": "Not found"}, 404)
         finally:
@@ -397,24 +420,88 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(self._snapshot())
 
     def _models(self) -> Dict[str, Any]:
-        mc = self.state.assistant.model_config
-        if mc.provider != "ollama":
-            return {"provider": mc.provider, "current": mc.name, "models": [], "can_switch": False}
-        names = list_ollama_models(mc.ollama_base_url)
-        if mc.name not in names:
-            names.insert(0, mc.name)
-        return {"provider": mc.provider, "current": mc.name, "models": names, "can_switch": True}
+        a = self.state.assistant
+        mc = a.model_config
+        cfg = a.config
+        options = []
+
+        # Local Ollama models
+        ollama_names = list_ollama_models(mc.ollama_base_url)
+        if mc.provider == "ollama" and mc.name and mc.name not in ollama_names:
+            ollama_names.insert(0, mc.name)
+        for m in ollama_names:
+            options.append({
+                "provider": "ollama",
+                "name": m,
+                "label": f"{m} (Local)",
+            })
+
+        # Gemini Cloud models
+        if getattr(cfg, "gemini_api_key", None):
+            gemini_defaults = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+            if mc.provider == "gemini" and mc.name not in gemini_defaults:
+                gemini_defaults.insert(0, mc.name)
+            for m in gemini_defaults:
+                options.append({
+                    "provider": "gemini",
+                    "name": m,
+                    "label": f"{m} (Gemini Cloud)",
+                })
+
+        # Mistral Cloud models
+        if getattr(cfg, "mistral_api_key", None):
+            mistral_defaults = ["mistral-small-latest", "mistral-large-latest", "codestral-latest"]
+            if mc.provider == "mistral" and mc.name not in mistral_defaults:
+                mistral_defaults.insert(0, mc.name)
+            for m in mistral_defaults:
+                options.append({
+                    "provider": "mistral",
+                    "name": m,
+                    "label": f"{m} (Mistral Cloud)",
+                })
+
+        # Ensure current model is listed if not already
+        if not any(opt["provider"] == mc.provider and opt["name"] == mc.name for opt in options):
+            options.insert(0, {
+                "provider": mc.provider,
+                "name": mc.name,
+                "label": f"{mc.name} ({mc.provider})",
+            })
+
+        legacy_models = [opt["name"] for opt in options if opt["provider"] == mc.provider]
+        return {
+            "provider": mc.provider,
+            "current": mc.name,
+            "models": legacy_models,
+            "options": options,
+            "can_switch": len(options) > 1,
+        }
 
     def _set_model(self, data: Dict[str, Any]) -> None:
         a = self.state.assistant
-        if a.model_config.provider != "ollama":
-            return self._json({"error": "Only Ollama models can be switched here. Change MODEL_NAME in .env."}, 400)
+        cfg = a.config
+        provider = str(data.get("provider", "")).strip().lower() or a.model_config.provider
         name = str(data.get("name", "")).strip()
-        if name not in list_ollama_models(a.model_config.ollama_base_url):
-            return self._json({"error": "That model is not installed in Ollama."}, 400)
+        if not name:
+            return self._json({"error": "Model name cannot be empty"}, 400)
+
+        if provider == "ollama":
+            installed = list_ollama_models(a.model_config.ollama_base_url)
+            if installed and name not in installed and name != a.model_config.name:
+                return self._json({"error": "That model is not installed in Ollama."}, 400)
+        elif provider == "gemini":
+            if not getattr(cfg, "gemini_api_key", None):
+                return self._json({"error": "Put your Gemini API key in .env as GEMINI_API_KEY to use Gemini."}, 400)
+        elif provider == "mistral":
+            if not getattr(cfg, "mistral_api_key", None):
+                return self._json({"error": "Put your Mistral API key in .env as MISTRAL_API_KEY to use Mistral."}, 400)
+        else:
+            return self._json({"error": f"Unknown provider: {provider}"}, 400)
+
         if not self.state.busy.acquire(blocking=False):
             return self._json({"error": "KAI is busy"}, 409)
         try:
+            a.model_config.provider = provider
             a.model_config.name = name
         finally:
             self.state.busy.release()

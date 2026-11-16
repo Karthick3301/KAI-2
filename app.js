@@ -125,7 +125,36 @@ function renderMd(root, text) {
     if (code) { if (line.trim().startsWith("```")) code = null; else code.textContent += (code.textContent ? "\n" : "") + line; continue; }
     if (line.trim().startsWith("```")) {
       para = null; endList();
-      const pre = el("pre"); code = el("code"); pre.appendChild(code); root.appendChild(pre); continue;
+      const lang = line.trim().slice(3).trim();
+      const box = el("div", "code-box");
+      const head = el("div", "code-head");
+      const langBadge = el("span", "code-lang", lang || "code");
+      const copyBtn = el("button", "code-copy-btn", "");
+      copyBtn.type = "button";
+      copyBtn.append(icon("copy"), document.createTextNode("Copy code"));
+      head.append(langBadge, copyBtn);
+      const pre = el("pre");
+      const codeEl = el("code");
+      pre.appendChild(codeEl);
+      code = codeEl;
+      box.append(head, pre);
+      root.appendChild(box);
+      copyBtn.onclick = async () => {
+        const cText = codeEl.textContent || "";
+        try { await navigator.clipboard.writeText(cText); } catch (e) {
+          const t = el("textarea"); t.value = cText; document.body.appendChild(t); t.select();
+          try { document.execCommand("copy"); } catch (e2) {} t.remove();
+        }
+        copyBtn.textContent = "";
+        copyBtn.append(icon("check"), document.createTextNode("Copied!"));
+        copyBtn.style.color = "var(--accent)";
+        setTimeout(() => {
+          copyBtn.textContent = "";
+          copyBtn.append(icon("copy"), document.createTextNode("Copy code"));
+          copyBtn.style.color = "";
+        }, 1800);
+      };
+      continue;
     }
     if (mathBlock !== null) {
       if (line.trim().endsWith("\\]") || line.trim().endsWith("$$")) {
@@ -189,6 +218,17 @@ function addUser(text) {
   const m = el("div", "msg user");
   fill(m, text);
   const acts = el("div", "acts");
+  const edit = el("button", "btn ghost", "");
+  edit.type = "button";
+  edit.title = "Edit this prompt";
+  edit.append(icon("edit"), document.createTextNode("Edit"));
+  edit.onclick = () => {
+    input.value = text;
+    autosize();
+    input.focus();
+    input.setSelectionRange(text.length, text.length);
+    chat.scrollTo({ top: chat.scrollHeight, behavior: "smooth" });
+  };
   const copy = el("button", "btn ghost", "");
   copy.type = "button";
   copy.append(icon("copy"), document.createTextNode("Copy"));
@@ -206,7 +246,7 @@ function addUser(text) {
       copy.style.color = "";
     }, 1500);
   };
-  acts.appendChild(copy);
+  acts.append(edit, copy);
   wrap.append(m, acts);
   log.appendChild(wrap);
   scrollDown(true);
@@ -381,6 +421,8 @@ function renderHistory(state) {
   log.textContent = ""; stepsBox = null;
   if (!state.history.length) { showEmpty(localInfo); return; }
   state.history.forEach((m) => { if (m.role === "user") addUser(m.content); else addAssistant(m.content); });
+  const lastUser = state.history.slice().reverse().find((m) => m.role === "user");
+  if (lastUser) lastPrompt = lastUser.content;
   markLast(); scrollDown(true);
   const last = state.history[state.history.length - 1];
   if (last && last.role === "assistant") {
@@ -390,6 +432,97 @@ function renderHistory(state) {
 }
 
 /* ---------- state, header, memory ---------- */
+let lastMemories = [];
+let memSearchQuery = "";
+
+function renderMemories(state) {
+  if (state && Array.isArray(state.memories)) lastMemories = state.memories;
+  const list = $("memList");
+  if (!list) return;
+  list.textContent = "";
+  const countBadge = $("memCountBadge");
+  if (countBadge) countBadge.textContent = String(lastMemories.length);
+
+  const q = memSearchQuery.toLowerCase().trim();
+  const indexed = lastMemories.map((fact, idx) => ({ fact, originalIndex: idx + 1 }));
+  const filtered = q ? indexed.filter((item) => item.fact.toLowerCase().includes(q)) : indexed;
+
+  const emptyEl = $("memEmpty");
+  const searchEmptyEl = $("memSearchEmpty");
+  if (emptyEl) emptyEl.style.display = lastMemories.length ? "none" : "block";
+  if (searchEmptyEl) searchEmptyEl.style.display = (lastMemories.length && !filtered.length) ? "block" : "none";
+
+  filtered.forEach((item) => {
+    const li = el("li", "mem-item");
+
+    const main = el("div", "mem-item-main");
+    const textSpan = el("span", "mem-text", item.fact);
+    const acts = el("div", "mem-actions");
+
+    const editBtn = el("button", "mem-act-btn edit", "");
+    editBtn.type = "button";
+    editBtn.title = "Edit memory";
+    editBtn.append(icon("edit"));
+
+    const delBtn = el("button", "mem-act-btn del", "");
+    delBtn.type = "button";
+    delBtn.title = "Delete memory";
+    delBtn.append(icon("trash"));
+
+    editBtn.onclick = () => {
+      li.textContent = "";
+      const editBox = el("div", "mem-edit-box");
+      const editInput = el("input", "mem-edit-input");
+      editInput.type = "text";
+      editInput.value = item.fact;
+      editInput.maxLength = 500;
+
+      const editActs = el("div", "mem-edit-acts");
+      const saveBtn = el("button", "btn primary", "Save");
+      saveBtn.type = "button";
+      saveBtn.style.padding = "4px 10px";
+      saveBtn.style.fontSize = "12px";
+
+      const cancelBtn = el("button", "btn ghost", "Cancel");
+      cancelBtn.type = "button";
+      cancelBtn.style.padding = "4px 8px";
+      cancelBtn.style.fontSize = "12px";
+
+      const doSave = async () => {
+        const val = editInput.value.trim();
+        if (!val || val === item.fact) { renderMemories(); return; }
+        const s = await api("/api/memory", { action: "edit", index: item.originalIndex, text: val });
+        if (!s.error) render(s);
+      };
+
+      saveBtn.onclick = doSave;
+      cancelBtn.onclick = () => renderMemories();
+
+      editInput.onkeydown = (e) => {
+        if (e.key === "Enter") { e.preventDefault(); doSave(); }
+        else if (e.key === "Escape") { e.preventDefault(); renderMemories(); }
+      };
+
+      editActs.append(cancelBtn, saveBtn);
+      editBox.append(editInput, editActs);
+      li.appendChild(editBox);
+      editInput.focus();
+      editInput.setSelectionRange(item.fact.length, item.fact.length);
+    };
+
+    delBtn.onclick = async () => {
+      delBtn.disabled = true;
+      const s = await api("/api/memory", { action: "remove", index: item.originalIndex });
+      if (!s.error) render(s);
+    };
+
+    acts.append(editBtn, delBtn);
+    main.append(textSpan, acts);
+    li.appendChild(main);
+    list.appendChild(li);
+  });
+}
+
 function setStatus(busyNow) {
   const box = $("status"); box.classList.toggle("busy", busyNow);
   $("statusText").textContent = busyNow ? "Thinking..." : (localInfo.local ? "On this computer - " : localInfo.provider + " cloud - ") + localInfo.model;
@@ -399,13 +532,7 @@ function render(state) {
   setStatus(busy);
   $("toolsBtn").setAttribute("aria-pressed", String(state.tools));
   $("toolsLabel").textContent = state.tools ? "Tools on" : "Tools off";
-  const list = $("memList"); list.textContent = "";
-  state.memories.forEach((fact, i) => {
-    const li = el("li", "", fact + " "); const b = el("button", "", "remove"); b.type = "button";
-    b.onclick = async () => render(await api("/api/memory", { action: "remove", index: i + 1 }));
-    li.appendChild(b); list.appendChild(li);
-  });
-  $("memEmpty").style.display = state.memories.length ? "none" : "block";
+  renderMemories(state);
   renderDocs(state);
   return state;
 }
@@ -477,6 +604,7 @@ async function stream(path, body) {
             firstToken = false;
           }
           if (!bubble && ev.reply) { finishSteps(); addAssistant(ev.reply, clock()); speakReply(ev.reply); } else speakFlush();
+          playJarvisChime();
           showChips(lastPrompt, ev.reply || buffer);
         } else if (ev.type === "error") {
           if (firstToken && bubble) {
@@ -559,29 +687,164 @@ $("file").onchange = async () => {
 };
 
 /* ---------- saved chats ---------- */
+let lastChatsInfo = { chats: [], active: "" };
+let chatSearchQuery = "";
+
 function renderChats(info) {
+  if (info) lastChatsInfo = info;
   const list = $("chatList"); list.textContent = "";
-  const active = info.chat_id || info.active; let title = "New chat";
-  (info.chats || []).forEach((c) => {
-    const li = el("li"); if (c.id === active) { li.className = "active"; title = c.title; }
-    const open = el("button", "open", c.title); open.type = "button"; open.title = c.title;
+  const active = lastChatsInfo.chat_id || lastChatsInfo.active; let activeTitle = "New chat";
+  const all = lastChatsInfo.chats || [];
+  const q = chatSearchQuery.toLowerCase().trim();
+  const filtered = q ? all.filter((c) => (c.title || "").toLowerCase().includes(q)) : all;
+
+  all.forEach((c) => { if (c.id === active) activeTitle = c.title; });
+
+  filtered.forEach((c) => {
+    const li = el("li");
+    let cls = "";
+    if (c.id === active) cls += " active";
+    if (c.pinned) cls += " pinned";
+    li.className = cls.trim();
+
+    const open = el("button", "open", ""); open.type = "button"; open.title = c.title;
+    if (c.pinned) {
+      const pinBadge = el("span", "pin-badge", "📌");
+      open.appendChild(pinBadge);
+    }
+    const titleSpan = el("span", "title-text", c.title);
+    open.appendChild(titleSpan);
+
     open.onclick = async () => {
       if (busy || c.id === active) return;
       const s = await api("/api/chat/open", { id: c.id });
       if (!s.error) { render(s); renderHistory(s); renderChats(s); closeSideOnMobile(); }
     };
-    const del = el("button", "del", "×"); del.type = "button"; del.title = "Delete chat"; del.setAttribute("aria-label", "Delete chat " + c.title);
-    del.onclick = async () => {
+
+    const acts = el("div", "chat-actions");
+
+    // Pin toggle button
+    const pinBtn = el("button", "chat-act-btn pin" + (c.pinned ? " active" : ""), "");
+    pinBtn.type = "button";
+    pinBtn.title = c.pinned ? "Unpin chat" : "Pin chat to top";
+    pinBtn.append(icon("pin"));
+    pinBtn.onclick = async (e) => {
+      e.stopPropagation();
+      if (busy) return;
+      const s = await api("/api/chat/pin", { id: c.id, pinned: !c.pinned });
+      if (!s.error) renderChats(s);
+    };
+
+    // Rename button
+    const renBtn = el("button", "chat-act-btn ren", "");
+    renBtn.type = "button";
+    renBtn.title = "Rename chat";
+    renBtn.append(icon("edit"));
+    renBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (busy) return;
+      li.textContent = "";
+      const input = el("input", "chat-rename-input");
+      input.type = "text";
+      input.maxLength = 64;
+      input.value = c.title || "";
+      let saved = false;
+      const finishRename = async (commit) => {
+        if (saved) return;
+        saved = true;
+        const val = input.value.trim();
+        if (commit && val && val !== c.title) {
+          const s = await api("/api/chat/rename", { id: c.id, title: val });
+          if (!s.error) { renderChats(s); return; }
+        }
+        renderChats(lastChatsInfo);
+      };
+      input.onkeydown = (ke) => {
+        if (ke.key === "Enter") { ke.preventDefault(); finishRename(true); }
+        else if (ke.key === "Escape") { ke.preventDefault(); finishRename(false); }
+      };
+      input.onblur = () => finishRename(true);
+      li.appendChild(input);
+      input.focus();
+      input.select();
+    };
+
+    // Delete button
+    const delBtn = el("button", "chat-act-btn del", "×");
+    delBtn.type = "button";
+    delBtn.title = "Delete chat";
+    delBtn.setAttribute("aria-label", "Delete chat " + c.title);
+    delBtn.onclick = async (e) => {
+      e.stopPropagation();
       if (busy || !confirm("Delete this chat?")) return;
       const s = await api("/api/chat/delete", { id: c.id });
       if (!s.error) { render(s); renderHistory(s); renderChats(s); }
     };
-    li.append(open, del); list.appendChild(li);
+
+    acts.append(pinBtn, renBtn, delBtn);
+    li.append(open, acts);
+    list.appendChild(li);
   });
-  $("chatTitle").textContent = title;
-  $("chatEmpty").style.display = (info.chats || []).length ? "none" : "block";
+
+  $("chatTitle").textContent = activeTitle;
+  $("chatEmpty").style.display = all.length ? "none" : "block";
+  if ($("chatSearchEmpty")) {
+    $("chatSearchEmpty").style.display = (all.length && !filtered.length) ? "block" : "none";
+  }
 }
 async function refreshChats() { const info = await api("/api/chats", {}); if (!info.error) renderChats({ chats: info.chats, chat_id: info.active }); }
+const chatSearchInput = $("chatSearch");
+const chatSearchClear = $("chatSearchClear");
+if (chatSearchInput) {
+  chatSearchInput.addEventListener("input", (e) => {
+    chatSearchQuery = e.target.value;
+    if (chatSearchClear) chatSearchClear.hidden = !chatSearchQuery;
+    renderChats(lastChatsInfo);
+  });
+}
+if (chatSearchClear) {
+  chatSearchClear.onclick = () => {
+    chatSearchQuery = "";
+    if (chatSearchInput) { chatSearchInput.value = ""; chatSearchInput.focus(); }
+    chatSearchClear.hidden = true;
+    renderChats(lastChatsInfo);
+  };
+}
+if ($("exportBtn")) {
+  $("exportBtn").onclick = () => {
+    const currentTitle = $("chatTitle").textContent || "chat";
+    const items = log.querySelectorAll(".user-wrap, .row");
+    if (!items.length) {
+      addNote("Nothing in this conversation to export.", true);
+      return;
+    }
+    let md = "# " + currentTitle + "\n\n";
+    md += "*Exported from KAI on " + new Date().toLocaleString() + "*\n\n---\n\n";
+    items.forEach((item) => {
+      if (item.classList.contains("user-wrap")) {
+        const u = item.querySelector(".msg.user");
+        if (u) {
+          md += "### User\n\n" + (u.dataset.raw || u.textContent).trim() + "\n\n";
+        }
+      } else if (item.classList.contains("row")) {
+        const a = item.querySelector(".msg.assistant");
+        if (a) {
+          md += "### KAI\n\n" + (a.dataset.raw || a.textContent).trim() + "\n\n";
+        }
+      }
+    });
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = el("a");
+    const slug = currentTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 36) || "chat";
+    a.href = url;
+    a.download = `kai-${slug}-${new Date().toISOString().slice(0, 10)}.md`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+}
 const isMobile = () => window.innerWidth <= 800;
 function closeSideOnMobile() { if (isMobile()) { $("side").classList.remove("open"); syncScrim(); } }
 function syncScrim() { $("scrim").classList.toggle("on", isMobile() && ($("side").classList.contains("open") || $("memory").classList.contains("open"))); }
@@ -605,21 +868,163 @@ $("newBtn").onclick = async () => {
 /* ---------- memory, tools, settings ---------- */
 $("memBtn").onclick = () => { $("memory").classList.toggle("open"); closeSideOnMobile(); syncScrim(); };
 $("toolsBtn").onclick = async () => { const on = $("toolsBtn").getAttribute("aria-pressed") === "true"; render(await api("/api/tools", { enabled: !on })); };
+
+const memSearchInput = $("memSearch");
+const memSearchClearBtn = $("memSearchClear");
+if (memSearchInput) {
+  memSearchInput.addEventListener("input", () => {
+    memSearchQuery = memSearchInput.value;
+    if (memSearchClearBtn) memSearchClearBtn.hidden = !memSearchQuery;
+    renderMemories();
+  });
+}
+if (memSearchClearBtn) {
+  memSearchClearBtn.onclick = () => {
+    memSearchQuery = "";
+    if (memSearchInput) { memSearchInput.value = ""; memSearchInput.focus(); }
+    memSearchClearBtn.hidden = true;
+    renderMemories();
+  };
+}
+const memCloseBtn = $("memCloseBtn");
+if (memCloseBtn) {
+  memCloseBtn.onclick = () => { $("memory").classList.remove("open"); syncScrim(); };
+}
+const doAddMem = async () => {
+  const inputEl = $("memInput");
+  const val = inputEl ? inputEl.value.trim() : "";
+  if (!val) return;
+  const s = await api("/api/memory", { action: "add", text: val });
+  if (inputEl) inputEl.value = "";
+  render(s);
+};
+const memAddBtn = $("memAddBtn");
+if (memAddBtn) memAddBtn.onclick = doAddMem;
 $("memInput").addEventListener("keydown", async (e) => {
-  if (e.key !== "Enter" || !$("memInput").value.trim()) return;
-  const s = await api("/api/memory", { action: "add", text: $("memInput").value }); $("memInput").value = ""; render(s);
+  if (e.key === "Enter") { e.preventDefault(); doAddMem(); }
 });
 $("memClear").onclick = async () => { if (confirm("Delete all long-term memories?")) render(await api("/api/memory", { action: "clear" })); };
+
+/* ---------- JARVIS sound effects (Web Audio API) ---------- */
+let jarvisSoundOn = load("kai-sound") !== "off"; // default on
+
+function playJarvisChime(force) {
+  if (!jarvisSoundOn && !force) return;
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    if (ctx.state === "suspended") ctx.resume();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(587.33, now); // D5
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.08); // A5
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.12, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.19);
+  } catch (e) {}
+}
+
+const sSoundEl = $("sSound");
+if (sSoundEl) {
+  sSoundEl.checked = jarvisSoundOn;
+  sSoundEl.onchange = () => {
+    jarvisSoundOn = sSoundEl.checked;
+    store("kai-sound", jarvisSoundOn ? "on" : "off");
+  };
+}
+const sSoundTestBtn = $("sSoundTest");
+if (sSoundTestBtn) {
+  sSoundTestBtn.onclick = () => playJarvisChime(true);
+}
+
+/* ---------- models switcher ---------- */
+let currentModelInfo = { provider: "", current: "", options: [] };
+
+async function loadModels() {
+  try {
+    const info = await api("/api/models", {});
+    if (!info.error) {
+      currentModelInfo = info;
+      renderModelPickers(info);
+    }
+  } catch (e) {}
+}
+
+function renderModelPickers(info) {
+  const headerSel = $("headerModelSelect");
+  const modalSel = $("sModel");
+  if (!headerSel) return;
+  headerSel.textContent = "";
+  if (modalSel) modalSel.textContent = "";
+
+  const opts = (info && info.options && info.options.length)
+    ? info.options
+    : [{ provider: info.provider, name: info.current, label: info.current }];
+
+  opts.forEach((opt) => {
+    const isCur = opt.provider === info.provider && opt.name === info.current;
+    const val = JSON.stringify({ provider: opt.provider, name: opt.name });
+
+    const o1 = el("option", "", opt.label || opt.name);
+    o1.value = val;
+    if (isCur) o1.selected = true;
+    headerSel.appendChild(o1);
+
+    if (modalSel) {
+      const o2 = el("option", "", opt.label || opt.name);
+      o2.value = val;
+      if (isCur) o2.selected = true;
+      modalSel.appendChild(o2);
+    }
+  });
+
+  const canSwitch = info.can_switch !== false && opts.length > 1;
+  headerSel.disabled = !canSwitch;
+  if (modalSel) modalSel.disabled = !canSwitch;
+  $("modelPickerWrap").style.display = opts.length ? "inline-flex" : "none";
+  if ($("sModelNote")) {
+    $("sModelNote").textContent = canSwitch
+      ? "Switch between local models or cloud providers on the fly."
+      : "Provider: " + info.provider + ". Add API keys or Ollama models to enable switching.";
+  }
+}
+
+$("headerModelSelect").onchange = async () => {
+  if (busy) return;
+  try {
+    const target = JSON.parse($("headerModelSelect").value);
+    $("headerModelSelect").disabled = true;
+    const res = await api("/api/model", target);
+    if (res.error) {
+      alert(res.error);
+    } else {
+      render(res);
+      await loadModels();
+    }
+  } catch (e) {
+  } finally {
+    $("headerModelSelect").disabled = false;
+  }
+};
 
 const dlg = $("settings");
 function fillSettings(s) { $("sName").value = s.name; $("sRole").value = s.role || ""; $("sTone").value = s.tone || ""; $("sInstr").value = s.instructions || ""; }
 function setMsg(t) { $("setMsg").textContent = t; }
 $("setBtn").onclick = async () => {
   setMsg(""); fillSettings(await api("/api/state")); fillVoices();
-  const info = await api("/api/models", {}); const sel = $("sModel"); sel.textContent = "";
-  (info.models.length ? info.models : [info.current]).forEach((m) => { const o = el("option", "", m); o.value = m; if (m === info.current) o.selected = true; sel.appendChild(o); });
-  sel.disabled = !info.can_switch;
-  $("sModelNote").textContent = info.can_switch ? "Models installed in Ollama on this computer." : "Provider: " + info.provider + ". To change the model, edit MODEL_NAME in your .env file.";
+  await loadModels();
+  if (sSoundEl) sSoundEl.checked = jarvisSoundOn;
   dlg.showModal();
 };
 $("sClose").onclick = () => dlg.close();
@@ -631,9 +1036,16 @@ async function savePersona(extra) {
 $("setForm").addEventListener("submit", async (e) => {
   e.preventDefault(); if (!(await savePersona())) return;
   const sel = $("sModel");
-  if (!sel.disabled) {
-    const cur = (await api("/api/state")).model;
-    if (sel.value && sel.value !== cur) { const res = await api("/api/model", { name: sel.value }); if (res.error) { setMsg(res.error); return; } render(res); }
+  if (!sel.disabled && sel.value) {
+    try {
+      const target = JSON.parse(sel.value);
+      if (target.name !== localInfo.model || target.provider !== localInfo.provider) {
+        const res = await api("/api/model", target);
+        if (res.error) { setMsg(res.error); return; }
+        render(res);
+        await loadModels();
+      }
+    } catch (e) {}
   }
   setMsg("Saved."); setTimeout(() => dlg.close(), 500);
 });
@@ -779,9 +1191,19 @@ try { if ("speechSynthesis" in window) window.speechSynthesis.onvoiceschanged = 
 /* ---------- composer ---------- */
 function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 180) + "px"; }
 input.addEventListener("input", autosize);
-input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    send();
+  } else if (e.key === "ArrowUp" && !input.value.trim() && lastPrompt) {
+    e.preventDefault();
+    input.value = lastPrompt;
+    autosize();
+    input.setSelectionRange(lastPrompt.length, lastPrompt.length);
+  }
+});
 $("form").addEventListener("submit", (e) => { e.preventDefault(); send(); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") { $("memory").classList.remove("open"); closeSideOnMobile(); syncScrim(); } });
 
-api("/api/state").then((s) => { render(s); renderHistory(s); refreshChats(); })
+api("/api/state").then((s) => { render(s); renderHistory(s); refreshChats(); loadModels(); })
   .catch(() => { $("statusText").textContent = "server not reachable"; });

@@ -78,14 +78,72 @@
   .mark { width: 30px; height: 30px; border-radius: 9px; background: var(--accent); display: grid; place-items: center; flex: none; }
   .mark svg { width: 20px; height: 20px; stroke: var(--accent-ink); fill: none; stroke-width: 3.6; stroke-linecap: round; stroke-linejoin: round; }
   .brand b { font-size: 20px; font-weight: 800; letter-spacing: .12em; }
+  .chat-search-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin: 8px 0 6px;
+  }
+  .chat-search-icon {
+    position: absolute;
+    left: 10px;
+    width: 13px;
+    height: 13px;
+    color: var(--muted);
+    pointer-events: none;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2.2;
+  }
+  .chat-search {
+    width: 100%;
+    padding: 6px 26px 6px 30px;
+    font-size: 13px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--ground);
+    color: var(--ink);
+    outline: none;
+    transition: border-color .15s;
+    font-family: inherit;
+  }
+  .chat-search:focus {
+    border-color: var(--accent);
+  }
+  .chat-search-clear {
+    position: absolute;
+    right: 6px;
+    background: transparent;
+    border: 0;
+    color: var(--muted);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    line-height: 1;
+  }
+  .chat-search-clear:hover {
+    color: var(--ink);
+  }
+
   #chatList { list-style: none; margin: 0; padding: 0; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
-  #chatList li { display: flex; align-items: center; border-radius: 10px; }
+  #chatList li { display: flex; align-items: center; border-radius: 10px; position: relative; }
   #chatList li:hover { background: var(--accent-soft); }
   #chatList li.active { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
-  #chatList .open { flex: 1; min-width: 0; text-align: left; border: 0; background: transparent; padding: 9px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14.5px; }
-  #chatList .del { border: 0; background: transparent; color: var(--muted); padding: 6px 10px; opacity: 0; font-size: 16px; line-height: 1; }
-  #chatList li:hover .del, #chatList .del:focus-visible { opacity: 1; }
-  #chatList .del:hover { color: #c0392b; }
+  #chatList li.pinned { border-left: 2px solid var(--accent); }
+  #chatList .open { flex: 1; min-width: 0; text-align: left; border: 0; background: transparent; padding: 8px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+  #chatList .title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  #chatList .pin-badge { font-size: 11px; flex: none; color: var(--accent); line-height: 1; }
+  #chatList .chat-actions { display: flex; align-items: center; gap: 1px; opacity: 0; padding-right: 4px; }
+  #chatList li:hover .chat-actions, #chatList li:focus-within .chat-actions { opacity: 1; }
+  #chatList .chat-act-btn { border: 0; background: transparent; color: var(--muted); padding: 5px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; font-size: 13px; }
+  #chatList .chat-act-btn:hover { color: var(--ink); background: var(--line); }
+  #chatList .chat-act-btn.pin.active { color: var(--accent); opacity: 1; }
+  #chatList .chat-act-btn.del:hover { color: #c0392b; }
+  #chatList .chat-act-btn .i { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
+  .chat-rename-input { width: 100%; border: 1px solid var(--accent); background: var(--surface); color: var(--ink); padding: 5px 8px; border-radius: 6px; font-size: 13.5px; outline: none; font-family: inherit; }
+  #exportBtn { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; }
+  #exportBtn .i { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; }
   .note { font-size: 13px; color: var(--muted); margin: 0; }
   .side-foot { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--line); padding-top: 10px; }
   .side-foot .btn { display: flex; align-items: center; gap: 10px; text-align: left; width: 100%; padding: 8px 10px; }
@@ -258,6 +316,75 @@
   .msg.assistant code { font-family: var(--mono); font-size: .9em; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 1px 5px; }
   .msg.assistant pre { margin: 0 0 .7em; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; white-space: pre; }
   .msg.assistant pre code { background: none; border: 0; padding: 0; }
+  .code-box {
+    margin: 10px 0 14px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .14);
+  }
+  .code-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px 6px 14px;
+    background: hsla(var(--h) var(--s) 20% / .18);
+    border-bottom: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--muted);
+    user-select: none;
+  }
+  .code-lang {
+    font-weight: 600;
+    text-transform: lowercase;
+    letter-spacing: .04em;
+    font-family: var(--mono);
+    color: var(--accent);
+  }
+  .code-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: transparent;
+    border: 0;
+    color: var(--muted);
+    font-size: 11.5px;
+    font-family: inherit;
+    padding: 3px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: color .15s, background .15s;
+  }
+  .code-copy-btn:hover {
+    color: var(--ink);
+    background: var(--line);
+  }
+  .code-copy-btn .i {
+    width: 13px;
+    height: 13px;
+    stroke: currentColor;
+    stroke-width: 2;
+    fill: none;
+  }
+  .code-box pre {
+    margin: 0;
+    padding: 12px 14px;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    overflow-x: auto;
+    white-space: pre;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .code-box pre code {
+    background: none;
+    border: 0;
+    padding: 0;
+    font-size: inherit;
+  }
   .msg.assistant .math-inline { font-family: "Cambria Math", "Latin Modern Math", "STIX Two Math", Georgia, serif; font-style: italic; padding: 0 2px; }
   .msg.assistant .math-block { display: block; margin: .6em 0; padding: 8px 14px; text-align: center; font-family: "Cambria Math", "Latin Modern Math", "STIX Two Math", Georgia, serif; font-size: 1.05em; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
   .msg.assistant .math-inline sup, .msg.assistant .math-block sup { font-size: .75em; vertical-align: super; line-height: 0; }
@@ -328,12 +455,34 @@
   .hint { max-width: 740px; margin: 8px auto 0; text-align: center; font-size: 12.5px; color: var(--muted); }
 
   /* memory drawer + dialog */
-  #memory { width: 300px; flex: none; display: none; flex-direction: column; gap: 10px; padding: 16px; background: var(--surface); border-left: 1px solid var(--line); overflow-y: auto; }
+  #memory { width: 330px; flex: none; display: none; flex-direction: column; gap: 12px; padding: 16px; background: var(--surface); border-left: 1px solid var(--line); overflow-y: auto; }
   #memory.open { display: flex; }
   #memory h3, dialog h3 { margin: 0; font-size: 16px; }
-  #memList { margin: 0; padding-left: 20px; }
-  #memList li { margin-bottom: 6px; overflow-wrap: anywhere; }
-  #memList button { border: 0; background: transparent; color: var(--muted); font-size: 12px; text-decoration: underline; padding: 0 4px; }
+  .mem-head { display: flex; flex-direction: column; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  .mem-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1 1 auto; }
+  .mem-item { background: var(--ground); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; transition: border-color .15s; }
+  .mem-item:hover { border-color: var(--muted); }
+  .mem-item-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
+  .mem-text { font-size: 13px; line-height: 1.4; color: var(--ink); overflow-wrap: anywhere; flex: 1 1 auto; }
+  .mem-actions { display: flex; gap: 4px; flex-shrink: 0; opacity: 0.7; transition: opacity .15s; }
+  .mem-item:hover .mem-actions, .mem-item:focus-within .mem-actions { opacity: 1; }
+  .mem-act-btn { border: 0; background: transparent; color: var(--muted); cursor: pointer; padding: 4px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; }
+  .mem-act-btn:hover { color: var(--ink); background: var(--surface); }
+  .mem-act-btn.del:hover { color: var(--danger, #ff6b6b); }
+  .mem-act-btn .i { width: 14px; height: 14px; }
+  .mem-edit-box { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+  .mem-edit-input { width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--accent); background: var(--surface); color: var(--ink); font-size: 13px; box-sizing: border-box; }
+  .mem-edit-acts { display: flex; justify-content: flex-end; gap: 6px; }
+  .mem-add-wrap { margin-top: auto; padding-top: 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+  .badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--ground); border: 1px solid var(--line); color: var(--muted); }
+
+  /* Header Model Picker */
+  .model-picker-wrap { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: 12.5px; height: 32px; box-sizing: border-box; }
+  .model-picker-wrap:focus-within { border-color: var(--accent); }
+  .model-picker-icon { width: 14px; height: 14px; color: var(--accent); flex-shrink: 0; }
+  .header-model-select { border: 0; background: transparent; color: var(--ink); font-size: 12px; font-weight: 500; cursor: pointer; outline: none; padding-right: 4px; max-width: 170px; text-overflow: ellipsis; }
+  .header-model-select option { background: var(--surface); color: var(--ink); }
+
   .field { width: 100%; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--ground); }
   textarea.field { resize: vertical; min-height: 80px; max-height: 240px; }
   dialog { border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--ink); padding: 0; width: min(540px, 94vw); box-shadow: var(--shadow); }
@@ -360,7 +509,7 @@
     #side.open { transform: none; }
     #memory.open { position: fixed; inset: 0 0 0 auto; z-index: 20; width: min(340px, 92vw); box-shadow: var(--shadow); }
     .status { max-width: 46vw; }
-    #toolsLabel { display: none; }
+    #toolsLabel, #exportBtn .export-label { display: none; }
     #scrim.on { display: block; position: fixed; inset: 0; z-index: 15; background: rgba(5, 12, 16, .5); }
     details.steps, .confirm { margin-left: 0; }
     .acts { opacity: 1; }
@@ -384,6 +533,7 @@
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
     <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
     <symbol id="i-retry" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></symbol>
     <symbol id="i-tools" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></symbol>
@@ -391,6 +541,11 @@
     <symbol id="i-vol" viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6l-5 4H4z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></symbol>
     <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" stroke="none"/></symbol>
     <symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 5v14M19 12l-7 7-7-7"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5M5 7l3-3h8l3 3v2l-4 4v4h-6v-4l-4-4V7z"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/></symbol>
   </defs>
 </svg>
 
@@ -399,8 +554,14 @@
   <aside id="side" aria-label="Chats">
     <div class="brand"><span class="mark" id="brandMark"></span><b>KAI</b></div>
     <button class="btn primary" id="newBtn" type="button">New chat</button>
+    <div class="chat-search-wrap">
+      <svg class="i chat-search-icon"><use href="#i-search"/></svg>
+      <input type="search" id="chatSearch" class="chat-search" placeholder="Search chats..." aria-label="Search chats" autocomplete="off" spellcheck="false">
+      <button type="button" id="chatSearchClear" class="chat-search-clear" title="Clear search" aria-label="Clear search" hidden>×</button>
+    </div>
     <ul id="chatList"></ul>
     <p class="note" id="chatEmpty">Your conversations will show up here.</p>
+    <p class="note" id="chatSearchEmpty" style="display:none; text-align:center; padding:12px 4px;">No matching chats found.</p>
     <div class="side-foot">
       <button class="btn ghost" id="memBtn" type="button"><svg class="i"><use href="#i-brain"/></svg>Memory</button>
       <button class="btn ghost" id="setBtn" type="button"><svg class="i"><use href="#i-gear"/></svg>Settings</button>
@@ -413,7 +574,12 @@
       <button class="btn ghost" id="menuBtn" type="button" aria-label="Show or hide chats"><svg class="i"><use href="#i-menu"/></svg></button>
       <div id="chatTitle">New chat</div>
       <div class="spacer"></div>
+      <div class="model-picker-wrap" id="modelPickerWrap" title="Switch AI model">
+        <svg class="i model-picker-icon"><use href="#i-cpu"/></svg>
+        <select id="headerModelSelect" class="header-model-select" aria-label="Switch AI model"></select>
+      </div>
       <div class="status" id="status" role="status" aria-live="polite"><i></i><span id="statusText">connecting...</span></div>
+      <button class="btn ghost" id="exportBtn" type="button" title="Export this chat as Markdown (.md)" aria-label="Export conversation"><svg class="i"><use href="#i-download"/></svg><span class="sr">Export</span><span class="export-label" style="margin-left:5px">Export</span></button>
       <button class="btn" id="toolsBtn" type="button" aria-pressed="true" title="Let KAI use tools: search, files, time, memory"><svg class="i"><use href="#i-tools"/></svg><span class="sr">Tools</span><span id="toolsLabel" style="margin-left:6px">Tools on</span></button>
     </header>
     <div class="local-banner" id="localBanner">
@@ -446,13 +612,29 @@
   </div>
 
   <aside id="memory" aria-label="Long-term memory">
-    <h3>Long-term memory</h3>
-    <p class="note">What KAI has saved about you. It only knows what is listed here.</p>
-    <ol id="memList"></ol>
+    <div class="mem-head">
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <h3 style="display:flex; align-items:center; gap:8px;">
+          <span>Memory</span>
+          <span id="memCountBadge" class="badge">0</span>
+        </h3>
+        <button class="btn ghost" id="memCloseBtn" type="button" title="Close memory" aria-label="Close memory" style="padding:2px 8px; font-size:16px;">×</button>
+      </div>
+      <p class="note" style="margin-top:2px;">What KAI remembers about you across chats.</p>
+      <div class="chat-search-wrap" style="margin:6px 0 0 0;">
+        <svg class="i chat-search-icon"><use href="#i-search"/></svg>
+        <input type="search" id="memSearch" class="chat-search" placeholder="Search memories..." aria-label="Search memories" autocomplete="off" spellcheck="false">
+        <button type="button" id="memSearchClear" class="chat-search-clear" title="Clear search" aria-label="Clear search" hidden>×</button>
+      </div>
+    </div>
+    <ul id="memList" class="mem-list"></ul>
     <p class="note" id="memEmpty">Nothing saved yet.</p>
-    <input class="field" id="memInput" placeholder="Add something to remember" maxlength="300" aria-label="Add a memory">
-    <p class="note">Press Enter to save.</p>
-    <button class="btn" id="memClear" type="button">Clear all memory</button>
+    <p class="note" id="memSearchEmpty" style="display:none; text-align:center; padding:12px 4px;">No matching memories found.</p>
+    <div class="mem-add-wrap">
+      <input class="field" id="memInput" placeholder="Add something to remember..." maxlength="300" aria-label="Add a memory">
+      <button class="btn primary" id="memAddBtn" type="button" style="width:100%;">Add memory</button>
+      <button class="btn" id="memClear" type="button" style="width:100%;">Clear all memory</button>
+    </div>
   </aside>
 </div>
 
@@ -477,6 +659,16 @@
     </div>
     <p class="note" style="margin-top:6px">Male/female depends on voices installed in your OS/browser. On Windows add more via Settings - Accessibility - Narrator - Add voices.</p>
     <div class="actions" style="margin-top:12px"><button type="button" class="btn" id="sReset">Reset persona</button></div>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:14px; padding-top:12px; border-top:1px solid var(--line);">
+      <div>
+        <label for="sSound" style="margin:0 0 2px 0; font-weight:600; font-size:13px; color:var(--ink);">JARVIS HUD Sound</label>
+        <div class="note" style="margin:0; font-size:11px;">Futuristic audio chime on reply completion</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button type="button" class="btn ghost" id="sSoundTest" style="padding:4px 8px; font-size:11.5px;">Test Chime</button>
+        <input type="checkbox" id="sSound" style="width:18px; height:18px; cursor:pointer;" checked>
+      </div>
+    </div>
     <hr>
     <fieldset>
       <legend class="lbl">Colour</legend>

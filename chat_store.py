@@ -76,6 +76,26 @@ class ChatStore:
         first, count, _ = self._chat_meta(path, path.stem)
         return first, count
 
+    def meta_path(self, chat_id: str) -> Path:
+        if not self.valid_id(chat_id):
+            raise ValueError("Invalid chat id")
+        return self.folder / f"{chat_id}.meta.json"
+
+    def get_meta(self, chat_id: str) -> Dict[str, Any]:
+        try:
+            path = self.meta_path(chat_id)
+            if not path.exists():
+                return {}
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (ValueError, OSError, json.JSONDecodeError):
+            return {}
+
+    def set_meta(self, chat_id: str, data: Dict[str, Any]) -> None:
+        path = self.meta_path(chat_id)
+        existing = self.get_meta(chat_id)
+        existing.update(data)
+        path.write_text(json.dumps(existing, ensure_ascii=False), encoding="utf-8")
+
     def list(self, keep: Optional[str] = None) -> List[Dict[str, Any]]:
         """Chats with at least one user message (plus `keep`, the open one), newest first."""
         rows = []
@@ -86,16 +106,21 @@ class ChatStore:
             first, count, updated = self._chat_meta(path, chat_id)
             if count == 0 and chat_id != keep:
                 continue
-            title = first[:TITLE_CHARS].rstrip() + ("..." if len(first) > TITLE_CHARS else "")
+            meta = self.get_meta(chat_id)
+            custom_title = str(meta.get("title", "")).strip()
+            pinned = bool(meta.get("pinned", False))
+            display_title = custom_title or (first[:TITLE_CHARS].rstrip() + ("..." if len(first) > TITLE_CHARS else ""))
             rows.append({
                 "id": chat_id,
-                "title": title or "New chat",
+                "title": display_title or "New chat",
+                "custom_title": custom_title,
+                "pinned": pinned,
                 "messages": count,
                 "updated": time.time() if count == 0 else updated,
             })
         if keep and self.valid_id(keep) and all(r["id"] != keep for r in rows):
-            rows.append({"id": keep, "title": "New chat", "messages": 0, "updated": time.time()})
-        rows.sort(key=lambda r: r["updated"], reverse=True)
+            rows.append({"id": keep, "title": "New chat", "custom_title": "", "pinned": False, "messages": 0, "updated": time.time()})
+        rows.sort(key=lambda r: (1 if r.get("pinned") else 0, r["updated"]), reverse=True)
         return rows
 
     def prune_empty(self, keep: Optional[str] = None) -> None:
@@ -117,6 +142,9 @@ class ChatStore:
         docs = self.folder / f"{chat_id}.docs.json"
         if docs.exists():
             docs.unlink()
+        meta = self.folder / f"{chat_id}.meta.json"
+        if meta.exists():
+            meta.unlink()
         return True
 
     def import_old_history(self, old_file: str | Path) -> Optional[str]:

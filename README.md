@@ -19,11 +19,16 @@ It can search the web, read your documents, use tools, and remember facts you gi
 - KAI is told not to claim abilities it does not have (reminders, calls, email)
 
 **Website** (`python web_server.py`)
-- Chat page with live replies, bold text, lists, code blocks and clickable links
-- Several saved chats: new, open, delete
+- Chat page with live replies, bold text, lists, code blocks with language badges and "Copy code" buttons, and clickable links
+- Quick prompt editing: press **Up Arrow (`↑`)** in an empty input to recall your last message, or click the **Edit** button (✎) on any previous user message bubble
+- Several saved chats with sidebar live search filter, pin chats to top (📌), inline renaming (✎), and delete
+- 1-click **Export Chat** button in the header bar to download your active conversation as a clean Markdown file (`.md`)
+- **Model Quick-Switcher** in the top navigation bar to seamlessly switch between local Ollama models and cloud providers on the fly
+- **Visual Memory Editor**: interactive drawer to search, edit in place (✎), add, or remove long-term memories
+- **JARVIS HUD Audio Chime**: subtle, futuristic Web Audio API confirmation tone on reply completion (toggleable in Settings)
+- Floating **Scroll-to-Bottom** button that smoothly appears whenever you scroll up on long technical explanations
 - Attach a **PDF, Word or text file** and ask questions about it. KAI reads only the passages that match the question, so a small model is not overloaded
-- Settings: change name, role, tone and instructions, and switch between installed Ollama models
-- Memory panel, Tools on/off, Copy and "Try again" on replies
+- Settings: change name, role, tone, instructions, model, voice, and HUD sound effects
 - Light, dark or automatic theme, and four colours
 - "Used 2 tools" steps you can expand to see what KAI did
 - Works on a phone-sized screen
@@ -106,20 +111,21 @@ How the pieces fit together is explained in [ARCHITECTURE.md](ARCHITECTURE.md).
 | File | What it does |
 |---|---|
 | `main.py` | Terminal app |
-| `web_server.py`, `index.html` | Website (small local server and the chat page) |
+| `web_server.py` | Local web server (Python standard library only) |
+| `index.html`, `app.js` | Website UI: chat interface, streaming, model picker, search, markdown renderer, visual memory editor |
 | `assistant.py` | The core: providers, streaming, tool loop, safety checks (imports `history.py`, `retry.py`, `links.py`) |
 | `history.py` | Messages, repair, truncation, Gemini sanitizing |
 | `retry.py` | HTTP retry with backoff |
 | `links.py` | Plain-text link flattening |
 | `tools.py` | Tools the model can call |
 | `documents.py` | Reads PDF/Word/text files and finds the passages that match a question |
-| `chat_store.py` | Saved chats for the website |
-| `memory.py` | Long-term memory |
+| `chat_store.py` | Saved chats for the website (supports pinning, renaming, and metadata) |
+| `memory.py` | Long-term memory (supports adding, editing, removing, and deduplication) |
 | `config.py` | Settings from `.env` |
 | `voice.py` | Optional speech input and output |
 | `test_*.py` | Automated tests |
 
-Created while running: `chat_history.jsonl`, `chats/`, `memory.json`, `persona.json`, `workspace/`.
+Created while running: `chat_history.jsonl`, `chats/` (with `.jsonl`, `.meta.json`, and `.docs.json`), `memory.json`, `persona.json`, `workspace/`.
 
 ## Run the tests
 

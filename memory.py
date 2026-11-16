@@ -51,6 +51,20 @@ class LongTermMemory:
         self.save()
         return f"Remembered: {cleaned}"
 
+    def update(self, index: int, new_fact: str) -> str:
+        if index < 1 or index > len(self.facts):
+            return f"No memory at index {index}."
+        cleaned = new_fact.strip()
+        if not cleaned:
+            return "Memory cannot be empty."
+        key = _same_fact_key(cleaned)
+        for i, existing in enumerate(self.facts):
+            if i != (index - 1) and _same_fact_key(existing) == key:
+                return f"Already remembered: {cleaned}"
+        self.facts[index - 1] = cleaned
+        self.save()
+        return f"Updated memory {index} to: {cleaned}"
+
     def remove(self, index: int) -> str:
         if index < 1 or index > len(self.facts):
             return f"No memory at index {index}."

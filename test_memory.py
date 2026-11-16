@@ -32,6 +32,28 @@ class DuplicateTests(unittest.TestCase):
         mem.add("NAME IS KARTHICK")
         self.assertEqual(mem.facts, ["Name is Karthick"])
 
+    def test_update_memory_success(self):
+        mem = self.make()
+        mem.add("Name is Karthick")
+        res = mem.update(1, "Name is Karthick A")
+        self.assertIn("Updated", res)
+        self.assertEqual(mem.facts, ["Name is Karthick A"])
+
+    def test_update_memory_rejects_empty_or_out_of_bounds(self):
+        mem = self.make()
+        mem.add("Name is Karthick")
+        self.assertIn("empty", mem.update(1, "   "))
+        self.assertIn("No memory", mem.update(0, "Something"))
+        self.assertIn("No memory", mem.update(5, "Something"))
+
+    def test_update_memory_rejects_duplicates_of_other_facts(self):
+        mem = self.make()
+        mem.add("Name is Karthick")
+        mem.add("Lives in Tamil Nadu")
+        res = mem.update(2, "name is karthick.")
+        self.assertIn("Already remembered", res)
+        self.assertEqual(mem.facts[1], "Lives in Tamil Nadu")
+
 
 if __name__ == "__main__":
     unittest.main()

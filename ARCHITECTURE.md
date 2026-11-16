@@ -32,17 +32,18 @@ One idea runs through everything: **`assistant.py` is the only place that talks 
 |---|---|
 | `main.py` | Terminal app. Reads what you type, prints streamed answers, asks yes/no for sensitive actions. |
 | `web_server.py` | Website server using only Python's standard library (`ThreadingHTTPServer`). No Flask or FastAPI. |
-| `index.html` | The whole website: HTML, CSS and JavaScript in one file. |
+| `index.html` | Website UI structure and styling (dark/light themes, modal dialogs, drawers). |
+| `app.js` | Client-side frontend logic: SSE streaming, Web Speech API voice, Web Audio API HUD chime, DOM-only markdown parser with code copy, model selector, chat search & pin, and visual memory editor. |
 | `assistant.py` | The core: system prompt, the three model providers, streaming, the tool-calling loop, safety checks. Imports `history.py`, `retry.py`, `links.py`. |
 | `history.py` | `Message`, `ChatHistory`, repair/truncate, Gemini sanitizing. |
 | `retry.py` | `request_with_retry` with backoff. |
 | `links.py` | `flatten_markdown_links`, `LinkFlattener`. |
 | `tools.py` | The 10 tools the model can call, plus their schemas and the `execute_tool` dispatcher. |
 | `config.py` | Reads settings from `.env` into small config objects (provider, model name, limits, persona). |
-| `memory.py` | Long-term memory in `memory.json` (`LongTermMemory`). |
-| `chat_store.py` | Several saved chats for the website, one small file each in `chats/` (`ChatStore`). |
+| `memory.py` | Long-term memory in `memory.json` (`LongTermMemory`, supports add, in-place edit, remove, clear, deduplication). |
+| `chat_store.py` | Saved chats for the website in `chats/` (`ChatStore`, supports timestamp sorting, metadata `.meta.json` for custom titles and pinned status). |
 | `documents.py` | Reads PDF, Word and text files, splits them into chunks and picks the useful ones (`ChatDocuments`). |
-| `voice.py` | Optional terminal voice mode (wake word, speech in and out). Browser voice is built into `index.html` via Web Speech API. |
+| `voice.py` | Optional terminal voice mode (wake word, speech in and out). Browser voice is built into `app.js` via Web Speech API. |
 | `test_*.py` | Tests using `unittest`. |
 
 ## 3. Request flow: what happens when you send a message
@@ -124,12 +125,15 @@ This is simple keyword retrieval. It needs no embeddings and no extra model, so 
 | Endpoint | Purpose |
 |---|---|
 | `GET /` | Serves `index.html`. |
-| `GET /api/state` | Current chat, settings, persona, documents. |
+| `GET /app.js` | Serves `app.js` client application. |
+| `GET /api/state` | Current chat, settings, persona, documents, active model. |
 | `POST /api/chat`, `/api/regenerate` | Send a message or retry the last one. The answer streams back as server-sent events (`text/event-stream`). |
 | `POST /api/confirm` | The user's yes or no for an approval prompt. |
-| `POST /api/chat/new`, `/open`, `/delete`, `/api/chats` | Manage saved chats. |
+| `POST /api/chat/new`, `/open`, `/delete`, `/rename`, `/pin`, `/api/chats` | Manage saved chats: new chat, open, delete, inline rename, pin/unpin, and list sorted by pin & time. |
 | `POST /api/upload`, `/api/docs/remove` | Attach or remove documents. |
-| `POST /api/persona`, `/api/model`, `/api/models`, `/api/tools`, `/api/memory`, `/api/clear` | Settings, model choice, tool switch, memory, clearing a chat. |
+| `POST /api/models`, `/api/model` | Query available local/cloud models and switch active model/provider on the fly. |
+| `POST /api/memory` | Long-term memory actions: `add`, `edit`/`update` in place, `remove`, and `clear`. |
+| `POST /api/persona`, `/api/tools`, `/api/clear` | Update persona configuration, toggle tools on/off, clear conversation history. |
 
 The browser page draws markdown with safe DOM calls only (no raw HTML injection).
 
@@ -152,7 +156,7 @@ Safety is part of the design, not an add-on. The main layers:
 | What | Where | Notes |
 |---|---|---|
 | Terminal chat | `chat_history.jsonl` | Saved and loaded by `ChatHistory`. |
-| Website chats | `chats/<id>.jsonl` (+ `chats/<id>.docs.json` for attached documents) | One file per chat; ids are validated by `ChatStore.valid_id`. |
+| Website chats | `chats/<id>.jsonl` (+ `chats/<id>.meta.json` for custom titles and pinned state, `chats/<id>.docs.json` for attached documents) | One file per chat; ids are validated by `ChatStore.valid_id`. |
 | Long-term memory | `memory.json` | Shared by the terminal and the website. |
 | Persona | `persona.json` | Name, role, tone and extra instructions from the Settings page. |
 | Workspace files | `workspace/` | The only folder the file tools can reach. |
