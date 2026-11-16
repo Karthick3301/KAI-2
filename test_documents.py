@@ -99,6 +99,11 @@ class RetrievalTests(unittest.TestCase):
     def test_short_document_is_returned_whole(self):
         self.assertEqual(len(D.pick_chunks("small text", "anything")), 1)
 
+    def test_top_one_does_not_divide_by_zero(self):
+        text = self.doc()
+        picked = D.pick_chunks(text, "summarise", top=1)
+        self.assertEqual(len(picked), 1)
+
     def test_context_labels_untrusted_and_limits_size(self):
         ctx = D.build_context([{"name": "a.txt", "text": self.doc()}], "warranty")
         self.assertIn("untrusted", ctx)
@@ -129,6 +134,7 @@ class StorageTests(unittest.TestCase):
 
 class AssistantContextTests(unittest.TestCase):
     def setUp(self):
+        self._orig_env = dict(os.environ)
         tmp = tempfile.mkdtemp()
         os.environ.update(MODEL_PROVIDER="gemini", GEMINI_API_KEY="fake", AUTO_SAVE="false",
                           WORKSPACE_DIR=f"{tmp}/ws", CHAT_HISTORY_FILE=f"{tmp}/h.jsonl",
@@ -137,6 +143,10 @@ class AssistantContextTests(unittest.TestCase):
         from config import Config
         self.A = A
         self.assistant = A.Assistant(Config())
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self._orig_env)
 
     def test_context_reaches_model_but_not_history(self):
         seen = []

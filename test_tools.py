@@ -38,6 +38,53 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class ToolArgumentTests(unittest.TestCase):
+    def test_bad_number_from_model_is_an_error_not_a_crash(self):
+        result = execute_tool("list_files", {"max_results": "many"})
+        self.assertTrue(result.startswith("Error:"), result)
+
+    def test_bad_number_for_read_file_is_an_error(self):
+        result = execute_tool("read_file", {"file_path": "x.txt", "max_lines": "all"})
+        self.assertTrue(result.startswith("Error:"), result)
+
+    def test_unclear_boolean_is_an_error_not_a_silent_overwrite(self):
+        result = execute_tool("write_file", {"file_path": "t.txt", "content": "x", "append": "maybe"})
+        self.assertTrue(result.startswith("Error:"), result)
+        self.assertIn("true or false", result)
+
+
+class ReadFileLimitTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        import tools
+        self.tools = tools
+        self.old_root = tools.WORKSPACE_ROOT
+        self.tmp = Path(tempfile.mkdtemp()).resolve()
+        tools.WORKSPACE_ROOT = self.tmp
+
+    def tearDown(self):
+        self.tools.WORKSPACE_ROOT = self.old_root
+
+    def test_a_very_large_file_is_cut_short(self):
+        (self.tmp / "big.txt").write_text("x" * (self.tools.MAX_READ_CHARS + 5000), encoding="utf-8")
+        text = self.tools.read_file("big.txt")
+        self.assertLess(len(text), self.tools.MAX_READ_CHARS + 200)
+        self.assertIn("truncated", text)
+
+    def test_binary_file_is_refused_with_a_clear_message(self):
+        (self.tmp / "blob.bin").write_bytes(b"\x00\x01\x02binary")
+        with self.assertRaises(ValueError) as cm:
+            self.tools.read_file("blob.bin")
+        self.assertIn("binary", str(cm.exception))
+
+    def test_max_lines_still_works(self):
+        (self.tmp / "small.txt").write_text("one\ntwo\nthree\n", encoding="utf-8")
+        text = self.tools.read_file("small.txt", max_lines=2)
+        self.assertTrue(text.startswith("one\ntwo"))
+        self.assertIn("truncated", text)
+
+
 class TimezoneTests(unittest.TestCase):
     def test_known_zone_and_utc(self):
         import tools

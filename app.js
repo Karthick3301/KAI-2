@@ -19,7 +19,23 @@ function icon(name) {
 }
 function mark() { return document.getElementById("kmark").content.firstElementChild.cloneNode(true); }
 function nearBottom() { return chat.scrollHeight - chat.scrollTop - chat.clientHeight < 140; }
-function scrollDown(force) { if (force || nearBottom()) chat.scrollTop = chat.scrollHeight; }
+const scrollBottomBtn = $("scrollBottom");
+function updateScrollBtn() {
+  if (!scrollBottomBtn) return;
+  const isUp = chat.scrollHeight - chat.scrollTop - chat.clientHeight > 160;
+  scrollBottomBtn.classList.toggle("visible", isUp);
+}
+chat.addEventListener("scroll", updateScrollBtn, { passive: true });
+if (scrollBottomBtn) {
+  scrollBottomBtn.onclick = () => {
+    chat.scrollTo({ top: chat.scrollHeight, behavior: "smooth" });
+    scrollBottomBtn.classList.remove("visible");
+  };
+}
+function scrollDown(force) {
+  if (force || nearBottom()) chat.scrollTop = chat.scrollHeight;
+  updateScrollBtn();
+}
 function clock() { return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
 
 /* ---------- theme and colour ---------- */
@@ -41,7 +57,49 @@ document.querySelectorAll('input[name="accent"]').forEach((r) => r.addEventListe
 $("brandMark").appendChild(mark());
 
 /* ---------- safe markdown (DOM nodes only, never innerHTML) ---------- */
-const INLINE_RE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\[[^\]\n]+\]\(https?:\/\/[^)\s]+\))|(https?:\/\/[^\s<>"')\]]+[^\s<>"')\].,;:!?])/g;
+const LATEX_MAP = {
+  "\\approx": "≈", "\\times": "×", "\\cdot": "·", "\\pm": "±", "\\mp": "∓",
+  "\\leq": "≤", "\\le": "≤", "\\geq": "≥", "\\ge": "≥", "\\neq": "≠",
+  "\\equiv": "≡", "\\sim": "∼", "\\propto": "∝", "\\infty": "∞",
+  "\\rightarrow": "→", "\\leftarrow": "←", "\\leftrightarrow": "↔", "\\to": "→",
+  "\\partial": "∂", "\\nabla": "∇", "\\hbar": "ℏ",
+  "\\alpha": "α", "\\beta": "β", "\\gamma": "γ", "\\delta": "δ",
+  "\\epsilon": "ε", "\\zeta": "ζ", "\\eta": "η", "\\theta": "θ",
+  "\\iota": "ι", "\\kappa": "κ", "\\lambda": "λ", "\\mu": "μ",
+  "\\nu": "ν", "\\xi": "ξ", "\\pi": "π", "\\rho": "ρ",
+  "\\sigma": "σ", "\\tau": "τ", "\\upsilon": "υ", "\\phi": "φ",
+  "\\chi": "χ", "\\psi": "ψ", "\\omega": "ω",
+  "\\Gamma": "Γ", "\\Delta": "Δ", "\\Theta": "Θ", "\\Lambda": "Λ",
+  "\\Xi": "Ξ", "\\Pi": "Π", "\\Sigma": "Σ", "\\Phi": "Φ",
+  "\\Psi": "Ψ", "\\Omega": "Ω",
+  "\\quad": "  ", "\\qquad": "    ", "\\,": " ", "\\;": " "
+};
+function formatMath(parent, expr) {
+  let s = (expr || "").trim();
+  s = s.replace(/\\(text|mathrm|mathbf)\{([^}]+)\}/g, "$2");
+  s = s.replace(/\\hat\{([^}]+)\}/g, "$1̂");
+  s = s.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, "($1 / $2)");
+  s = s.replace(/\\sqrt\{([^}]+)\}/g, "√($1)");
+  s = s.replace(/\\(left|right)(?=[(\[|\]).|\s]|$)/g, "");
+  for (const [k, v] of Object.entries(LATEX_MAP)) {
+    if (s.includes(k)) s = s.split(k).join(v);
+  }
+  const SCRIPT_RE = /(\^\{([^}]+)\}|\^([A-Za-z0-9+-]))|(_\{([^}]+)\}|_([A-Za-z0-9+-]))/g;
+  let last = 0, sm;
+  while ((sm = SCRIPT_RE.exec(s)) !== null) {
+    if (sm.index > last) parent.appendChild(document.createTextNode(s.slice(last, sm.index)));
+    if (sm[1]) {
+      const val = sm[2] !== undefined ? sm[2] : sm[3];
+      parent.appendChild(el("sup", "", val));
+    } else if (sm[4]) {
+      const val = sm[5] !== undefined ? sm[5] : sm[6];
+      parent.appendChild(el("sub", "", val));
+    }
+    last = sm.index + sm[0].length;
+  }
+  if (last < s.length) parent.appendChild(document.createTextNode(s.slice(last)));
+}
+const INLINE_RE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\\\([^\n]*?\\\))|(\[[^\]\n]+\]\(https?:\/\/[^)\s]+\))|(https?:\/\/[^\s<>"')\]]+[^\s<>"')\].,;:!?])/g;
 function link(parent, href, label) {
   const a = el("a", "", label); a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer"; parent.appendChild(a);
 }
@@ -52,7 +110,8 @@ function inline(parent, text) {
     const tok = m[0];
     if (m[1]) parent.appendChild(el("code", "", tok.slice(1, -1)));
     else if (m[2]) parent.appendChild(el("strong", "", tok.slice(2, -2)));
-    else if (m[3]) { const k = tok.indexOf("]("); link(parent, tok.slice(k + 2, -1), tok.slice(1, k)); }
+    else if (m[3]) { const span = el("span", "math-inline"); formatMath(span, tok.slice(2, -2)); parent.appendChild(span); }
+    else if (m[4]) { const k = tok.indexOf("]("); link(parent, tok.slice(k + 2, -1), tok.slice(1, k)); }
     else link(parent, tok, tok);
     last = m.index + tok.length;
   }
@@ -60,7 +119,7 @@ function inline(parent, text) {
 }
 function renderMd(root, text) {
   root.textContent = "";
-  let para = null, list = null, code = null, sub = null, lastLi = null;
+  let para = null, list = null, code = null, sub = null, lastLi = null, mathBlock = null;
   const endList = () => { list = null; sub = null; lastLi = null; };
   for (const line of text.replace(/\s+$/, "").split("\n")) {
     if (code) { if (line.trim().startsWith("```")) code = null; else code.textContent += (code.textContent ? "\n" : "") + line; continue; }
@@ -68,7 +127,33 @@ function renderMd(root, text) {
       para = null; endList();
       const pre = el("pre"); code = el("code"); pre.appendChild(code); root.appendChild(pre); continue;
     }
-    if (!line.trim()) { para = null; continue; }
+    if (mathBlock !== null) {
+      if (line.trim().endsWith("\\]") || line.trim().endsWith("$$")) {
+        const part = line.trim().replace(/(\\\]|\$\$)$/, "").trim();
+        if (part) mathBlock.push(part);
+        para = null; endList();
+        const div = el("div", "math-block"); formatMath(div, mathBlock.join(" ")); root.appendChild(div);
+        mathBlock = null;
+      } else {
+        mathBlock.push(line.trim());
+      }
+      continue;
+    }
+    const tline = line.trim();
+    if (!tline) { para = null; continue; }
+    if (tline.startsWith("\\[") || tline.startsWith("$$")) {
+      const closeTag = tline.startsWith("\\[") ? "\\]" : "$$";
+      if (tline.length > 2 && tline.endsWith(closeTag)) {
+        para = null; endList();
+        const expr = tline.slice(2, -closeTag.length).trim();
+        const div = el("div", "math-block"); formatMath(div, expr); root.appendChild(div);
+        continue;
+      }
+      para = null; endList();
+      const first = tline.slice(2).trim();
+      mathBlock = first ? [first] : [];
+      continue;
+    }
     let m;
     if ((m = line.match(/^\s{0,3}#{1,4}\s+(.*)$/))) { para = null; endList(); const h = el("h4"); inline(h, m[1]); root.appendChild(h); continue; }
     if ((m = line.match(/^(\s*)([-*•]|\d+[.)])\s+(.*)$/))) {
@@ -86,6 +171,9 @@ function renderMd(root, text) {
     if (!para) { para = el("p"); root.appendChild(para); } else para.appendChild(el("br"));
     inline(para, line.trim());
   }
+  if (mathBlock !== null && mathBlock.length > 0) {
+    const div = el("div", "math-block"); formatMath(div, mathBlock.join(" ")); root.appendChild(div);
+  }
 }
 function plainLinks(root, text) {
   root.textContent = ""; let last = 0, m; INLINE_RE.lastIndex = 0;
@@ -96,17 +184,51 @@ function plainLinks(root, text) {
 function fill(node, text) { node.dataset.raw = text; if (node.classList.contains("assistant")) renderMd(node, text); else plainLinks(node, text); }
 
 /* ---------- conversation view ---------- */
-function addUser(text) { const m = el("div", "msg user"); fill(m, text); log.appendChild(m); scrollDown(true); return m; }
+function addUser(text) {
+  const wrap = el("div", "user-wrap");
+  const m = el("div", "msg user");
+  fill(m, text);
+  const acts = el("div", "acts");
+  const copy = el("button", "btn ghost", "");
+  copy.type = "button";
+  copy.append(icon("copy"), document.createTextNode("Copy"));
+  copy.onclick = async () => {
+    try { await navigator.clipboard.writeText(text); } catch (e) {
+      const t = el("textarea"); t.value = text; document.body.appendChild(t); t.select();
+      try { document.execCommand("copy"); } catch (e2) {} t.remove();
+    }
+    copy.textContent = "";
+    copy.append(icon("check"), document.createTextNode("Copied!"));
+    copy.style.color = "var(--accent)";
+    setTimeout(() => {
+      copy.textContent = "";
+      copy.append(icon("copy"), document.createTextNode("Copy"));
+      copy.style.color = "";
+    }, 1500);
+  };
+  acts.appendChild(copy);
+  wrap.append(m, acts);
+  log.appendChild(wrap);
+  scrollDown(true);
+  return m;
+}
 function addAssistant(text, when) {
   const row = el("div", "row"); const mk = el("span", "mark"); mk.appendChild(mark());
   const body = el("div", "body"); const msg = el("div", "msg assistant"); fill(msg, text);
   const acts = el("div", "acts");
   const copy = el("button", "btn ghost", ""); copy.type = "button"; copy.append(icon("copy"), document.createTextNode("Copy"));
   copy.onclick = async () => {
-    try { await navigator.clipboard.writeText(msg.dataset.raw || ""); } catch (e) {
-      const t = el("textarea"); t.value = msg.dataset.raw || ""; document.body.appendChild(t); t.select(); try { document.execCommand("copy"); } catch (e2) {} t.remove();
+    try { await navigator.clipboard.writeText(msg.dataset.raw || msg.textContent || ""); } catch (e) {
+      const t = el("textarea"); t.value = msg.dataset.raw || msg.textContent || ""; document.body.appendChild(t); t.select(); try { document.execCommand("copy"); } catch (e2) {} t.remove();
     }
-    copy.lastChild.textContent = "Copied"; setTimeout(() => { copy.lastChild.textContent = "Copy"; }, 1400);
+    copy.textContent = "";
+    copy.append(icon("check"), document.createTextNode("Copied!"));
+    copy.style.color = "var(--accent)";
+    setTimeout(() => {
+      copy.textContent = "";
+      copy.append(icon("copy"), document.createTextNode("Copy"));
+      copy.style.color = "";
+    }, 1500);
   };
   acts.appendChild(copy);
   if (when) acts.appendChild(el("span", "when", when));
@@ -158,7 +280,81 @@ function markLast() {
   last.querySelector(".acts").appendChild(retry);
 }
 
+function clearChips() {
+  const bar = $("chipsBar");
+  if (bar) bar.textContent = "";
+}
+
+function showChips(lastUserMsg, lastAssistantReply) {
+  const bar = $("chipsBar");
+  if (!bar) return;
+  bar.textContent = "";
+  const reply = (lastAssistantReply || "").trim();
+  const combined = (reply + " " + (lastUserMsg || "")).trim();
+  if (!combined) return;
+
+  const suggestions = [];
+
+  // 1. Extract prominent topics from headings or bold titles
+  const titles = reply.match(/(?:\d+\.\s*\*\*|###\s*|\*\*)([^\n*#:`]{4,35})(?:\*\*|:)/g);
+  if (titles && titles.length) {
+    const clean = titles[0].replace(/^[\d\.\s#\*]+|[\*\:\s]+$/g, "").trim();
+    if (clean.length > 3 && !/^(example|note|tip|step)/i.test(clean)) {
+      suggestions.push("Tell me more about " + clean);
+    }
+  }
+
+  // 2. Science / Math / Physics
+  if (/\b(quantum|physics|physic|equation|formula|math|calculus|particle|tunneling|atom|relativity|energy|wave)\b/i.test(combined)) {
+    if (!suggestions.some((s) => s.includes("simpler"))) suggestions.push("Explain this in simpler terms");
+    suggestions.push("What are practical applications of this?");
+    suggestions.push("Give a step-by-step example");
+  }
+  // 3. Code / Tech / Programming
+  else if (/```|\b(python|javascript|code|function|error|bug|api|database|sql|class|loop)\b/i.test(combined)) {
+    suggestions.push("Show a working code example");
+    suggestions.push("What are common mistakes or bugs here?");
+    suggestions.push("How do I test this?");
+  }
+  // 4. Personal / Decisions / Relationships
+  else if (/\b(breakup|relationship|feeling|feelings|advice|decide|decision|career|job|friend|grow|future)\b/i.test(combined)) {
+    suggestions.push("Can you help me weigh pros and cons?");
+    suggestions.push("What should my next step be?");
+    suggestions.push("Give me another perspective on this");
+  }
+  // 5. General topics
+  else {
+    suggestions.push("Summarize this in 3 key points");
+    suggestions.push("Tell me more details about this");
+    suggestions.push("What should I ask next?");
+  }
+
+  const seen = new Set();
+  const picked = [];
+  for (const s of suggestions) {
+    if (!seen.has(s)) {
+      seen.add(s);
+      picked.push(s);
+    }
+    if (picked.length >= 3) break;
+  }
+
+  picked.forEach((text) => {
+    const btn = el("button", "chip-btn");
+    btn.type = "button";
+    const icon = el("span", "", "💡");
+    icon.style.fontSize = "11px";
+    btn.append(icon, document.createTextNode(text));
+    btn.onclick = () => {
+      clearChips();
+      ask(text);
+    };
+    bar.appendChild(btn);
+  });
+}
+
 function showEmpty(info) {
+  clearChips();
   log.textContent = "";
   const box = el("div", "empty");
   const mk = el("span", "mark"); mk.appendChild(mark());
@@ -181,10 +377,16 @@ function showEmpty(info) {
 function ask(text) { input.value = text; send(); }
 
 function renderHistory(state) {
+  clearChips();
   log.textContent = ""; stepsBox = null;
   if (!state.history.length) { showEmpty(localInfo); return; }
   state.history.forEach((m) => { if (m.role === "user") addUser(m.content); else addAssistant(m.content); });
   markLast(); scrollDown(true);
+  const last = state.history[state.history.length - 1];
+  if (last && last.role === "assistant") {
+    const userTurn = state.history.slice(0, -1).reverse().find((m) => m.role === "user");
+    showChips(userTurn ? userTurn.content : "", last.content);
+  }
 }
 
 /* ---------- state, header, memory ---------- */
@@ -229,10 +431,19 @@ let streamAbort = null;
 async function stream(path, body) {
   setBusy(true); stepsBox = null; speakReset();
   streamAbort = new AbortController();
-  let bubble = null, buffer = "", stopped = false;
+  let bubble = null, buffer = "", stopped = false, firstToken = true;
+  bubble = addAssistant("", clock());
+  const dots = el("span", "thinking-dots");
+  dots.append(el("span"), el("span"), el("span"));
+  bubble.appendChild(dots);
+  bubble.classList.add("typing");
+  scrollDown(true);
   try {
     const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: streamAbort.signal });
-    if (!res.ok) { const err = await res.json().catch(() => ({})); addNote("Error: " + (err.error || res.status), true); return; }
+    if (!res.ok) {
+      if (firstToken && bubble) { const row = bubble.closest(".row"); if (row) row.remove(); bubble = null; }
+      const err = await res.json().catch(() => ({})); addNote("Error: " + (err.error || res.status), true); return;
+    }
     const reader = res.body.getReader(), dec = new TextDecoder("utf-8"); let pending = "";
     for (;;) {
       const { value, done } = await reader.read(); if (done) break;
@@ -242,38 +453,80 @@ async function stream(path, body) {
         if (!line.startsWith("data: ")) continue;
         const ev = JSON.parse(line.slice(6));
         if (ev.type === "token") {
-          if (!bubble) { finishSteps(); bubble = addAssistant("", clock()); bubble.classList.add("typing"); }
+          if (firstToken) {
+            firstToken = false;
+            bubble.textContent = "";
+            finishSteps();
+          }
           buffer += ev.text; const keep = nearBottom(); fill(bubble, buffer); if (keep) scrollDown(true); speakChunk(ev.text);
         } else if (ev.type === "event") {
-          if (bubble) { bubble.classList.remove("typing"); bubble = null; buffer = ""; speakFlush(); }
+          if (bubble && firstToken) {
+            const row = bubble.closest(".row");
+            if (row) row.remove();
+            bubble = null;
+            firstToken = true;
+          } else if (bubble) {
+            bubble.classList.remove("typing"); bubble = null; buffer = ""; speakFlush();
+          }
           const step = describeStep(ev.text);
           if (step) addStep(step); else addNote(ev.text, false);
         } else if (ev.type === "confirm") { askApproval(ev);
-        } else if (ev.type === "done") { if (!bubble && ev.reply) { finishSteps(); addAssistant(ev.reply, clock()); speakReply(ev.reply); } else speakFlush();
-        } else if (ev.type === "error") { addNote("Error: " + ev.text, true); }
+        } else if (ev.type === "done") {
+          if (firstToken && bubble) {
+            bubble.textContent = "";
+            firstToken = false;
+          }
+          if (!bubble && ev.reply) { finishSteps(); addAssistant(ev.reply, clock()); speakReply(ev.reply); } else speakFlush();
+          showChips(lastPrompt, ev.reply || buffer);
+        } else if (ev.type === "error") {
+          if (firstToken && bubble) {
+            const row = bubble.closest(".row");
+            if (row) row.remove();
+            bubble = null;
+          }
+          addNote("Error: " + ev.text, true);
+        }
       }
     }
   } catch (e) {
     if (e && e.name === "AbortError") { stopped = true; }
-    else addNote("Could not reach KAI (" + e.message + "). Is web_server.py still running?", true);
+    else {
+      if (firstToken && bubble) {
+        const row = bubble.closest(".row");
+        if (row) row.remove();
+        bubble = null;
+      }
+      addNote("Could not reach KAI (" + e.message + "). Is web_server.py still running?", true);
+    }
   } finally {
     streamAbort = null;
-    if (bubble) bubble.classList.remove("typing");
+    if (bubble) {
+      bubble.classList.remove("typing");
+      if (firstToken) {
+        const row = bubble.closest(".row");
+        if (row) row.remove();
+      }
+    }
     if (stopped) addNote("Stopped.", false);
     finishSteps(); setBusy(false); markLast(); input.focus(); refreshChats();
   }
 }
 $("stop").onclick = () => stopStream();
+let lastPrompt = "";
 async function send() {
   const text = input.value.trim(); if (!text || busy) return;
+  lastPrompt = text;
+  clearChips();
   input.value = ""; autosize();
   if (log.querySelector(".empty")) log.textContent = "";
   addUser(text); markLast(); await stream("/api/chat", { message: text });
 }
 async function regenerate() {
   if (busy) return;
+  clearChips();
   const users = log.querySelectorAll(".msg.user"); if (!users.length) return;
-  let node = users[users.length - 1].nextSibling;
+  const lastWrap = users[users.length - 1].closest(".user-wrap") || users[users.length - 1];
+  let node = lastWrap.nextSibling;
   while (node) { const next = node.nextSibling; node.remove(); node = next; }
   await stream("/api/regenerate", {});
 }
@@ -334,6 +587,14 @@ function closeSideOnMobile() { if (isMobile()) { $("side").classList.remove("ope
 function syncScrim() { $("scrim").classList.toggle("on", isMobile() && ($("side").classList.contains("open") || $("memory").classList.contains("open"))); }
 $("menuBtn").onclick = () => { $("side").classList.toggle(isMobile() ? "open" : "collapsed"); syncScrim(); };
 $("scrim").onclick = () => { $("side").classList.remove("open"); $("memory").classList.remove("open"); syncScrim(); };
+const localBanner = $("localBanner");
+if (localBanner && load("kai-banner-dismissed")) { localBanner.classList.add("hidden"); }
+if ($("bannerClose")) {
+  $("bannerClose").onclick = () => {
+    if (localBanner) localBanner.classList.add("hidden");
+    store("kai-banner-dismissed", "1");
+  };
+}
 $("newBtn").onclick = async () => {
   let s = await api("/api/chat/new", {});
   if (s.error) s = await api("/api/clear", {});
@@ -382,6 +643,11 @@ $("sReset").onclick = async () => { if (await savePersona({ reset: true })) setM
 let speakOn = load("kai-speak") === "on";
 function applySpeak() { $("speak").setAttribute("aria-pressed", String(speakOn)); }
 let speakBuf = "";
+let activeUtterances = 0;
+function setSpeaking(active) {
+  const btn = $("speak");
+  if (btn) btn.classList.toggle("speaking", active);
+}
 function chosenVoice() {
   try {
     if (!("speechSynthesis" in window)) return null;
@@ -396,6 +662,9 @@ function speakUtter(text) {
     u.rate = 1; u.volume = 0.9;
     const v = chosenVoice();
     if (v) u.voice = v;
+    u.onstart = () => { activeUtterances++; setSpeaking(true); };
+    u.onend = () => { activeUtterances = Math.max(0, activeUtterances - 1); if (!activeUtterances) setSpeaking(false); };
+    u.onerror = () => { activeUtterances = Math.max(0, activeUtterances - 1); if (!activeUtterances) setSpeaking(false); };
     window.speechSynthesis.speak(u);
   } catch (e) {}
 }
@@ -421,7 +690,7 @@ function fillVoices() {
     if (!voices.length) { const o = document.createElement("option"); o.value = ""; o.textContent = "No voices found in this browser"; sel.appendChild(o); }
   } catch (e) {}
 }
-function speakReset() { speakBuf = ""; try { window.speechSynthesis.cancel(); } catch (e) {} }
+function speakReset() { speakBuf = ""; activeUtterances = 0; setSpeaking(false); try { window.speechSynthesis.cancel(); } catch (e) {} }
 function speakChunk(piece) {
   try {
     if (!speakOn || !piece || !("speechSynthesis" in window)) return;
@@ -446,7 +715,7 @@ function speakFlush() {
   } catch (e) { speakBuf = ""; }
 }
 function speakReply(text) { speakChunk(text || ""); speakFlush(); }
-$("speak").onclick = () => { speakOn = !speakOn; store("kai-speak", speakOn ? "on" : "off"); applySpeak(); if (!speakOn) { speakBuf = ""; try { window.speechSynthesis.cancel(); } catch (e) {} } };
+$("speak").onclick = () => { speakOn = !speakOn; store("kai-speak", speakOn ? "on" : "off"); applySpeak(); if (!speakOn) speakReset(); };
 applySpeak();
 $("sVoice").addEventListener("change", () => { store("kai-voice", $("sVoice").value || undefined); });
 $("vTest").onclick = () => {

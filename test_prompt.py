@@ -12,6 +12,13 @@ from config import Config
 
 
 class PlainTextTests(unittest.TestCase):
+    def setUp(self):
+        self._orig_env = dict(os.environ)
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self._orig_env)
+
     def prompt(self, **env):
         os.environ.pop("PLAIN_TEXT", None)
         os.environ.update(env)
@@ -22,6 +29,8 @@ class PlainTextTests(unittest.TestCase):
 
     def test_can_be_switched_off(self):
         self.assertNotIn("plain-text terminal", self.prompt(PLAIN_TEXT="false"))
+        self.assertIn("web interface", self.prompt(PLAIN_TEXT="false"))
+        self.assertIn("clean readable expressions", self.prompt(PLAIN_TEXT="false"))
 
     def test_no_worked_numbers_a_small_model_could_copy(self):
         prompt = self.prompt()
@@ -93,6 +102,13 @@ class AbilityClaimTests(unittest.TestCase):
 
 
 class MemoryHonestyTests(unittest.TestCase):
+    def setUp(self):
+        self._orig_env = dict(os.environ)
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self._orig_env)
+
     def make(self):
         os.environ.pop("PLAIN_TEXT", None)
         a = A.Assistant(Config())
@@ -112,6 +128,25 @@ class MemoryHonestyTests(unittest.TestCase):
         self.assertIn("- likes chai", prompt)
         self.assertNotIn("Saved memory list: empty.", prompt)
         self.assertIn("Never claim to remember", prompt)
+
+
+class ToneAndLanguageTests(unittest.TestCase):
+    def setUp(self):
+        self._orig_env = dict(os.environ)
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self._orig_env)
+
+    def test_language_and_empathy_rules_present(self):
+        a = A.Assistant(Config())
+        prompt = a._build_system_prompt()
+        self.assertIn("Language consistency:", prompt)
+        self.assertIn("same language the user uses", prompt)
+        self.assertIn("Empathy and sensitive topics:", prompt)
+        self.assertIn("breakups, relationship struggles", prompt)
+        self.assertIn("Attribution honesty:", prompt)
+        self.assertIn("accurately distinguish between what you said", prompt)
 
 
 if __name__ == "__main__":

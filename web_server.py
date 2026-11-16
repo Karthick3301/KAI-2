@@ -79,6 +79,8 @@ class KaiState:
 
     def open_chat(self, chat_id: str) -> None:
         self.chat_id = chat_id
+        if self.store:
+            self.store.prune_empty(keep=chat_id)
         self.assistant.switch_chat(str(self.store.path(chat_id)))
 
     def documents(self):
@@ -91,15 +93,22 @@ class KaiState:
             self._mem_docs = ChatDocuments(None)
         return self._mem_docs
 
-    def ask_user(self, message: str, send) -> bool:
+    def ask_user(self, message: str, send, is_alive: Optional[Callable[[], bool]] = None) -> bool:
+        import time
+
         confirm_id = uuid.uuid4().hex
         slot = {"event": threading.Event(), "allow": False}
         with self.pending_lock:
             self.pending[confirm_id] = slot
         try:
             send({"type": "confirm", "id": confirm_id, "message": message})
-            slot["event"].wait(CONFIRM_TIMEOUT_SECONDS)
-            return bool(slot["allow"]) if slot["event"].is_set() else False
+            deadline = time.monotonic() + CONFIRM_TIMEOUT_SECONDS
+            while time.monotonic() < deadline:
+                if slot["event"].wait(0.25):
+                    return bool(slot["allow"])
+                if is_alive and not is_alive():
+                    return False
+            return False
         finally:
             with self.pending_lock:
                 self.pending.pop(confirm_id, None)
@@ -145,17 +154,30 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        if status >= 400:
+            self.send_header("Connection", "close")
+            self.close_connection = True
         self.end_headers()
         self.wfile.write(body)
 
     def _read_json(self, limit: int = MAX_BODY_BYTES) -> Optional[Dict[str, Any]]:
-        if "application/json" not in (self.headers.get("Content-Type") or ""):
-            return None
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
+            length = 0
+        if "application/json" not in (self.headers.get("Content-Type") or ""):
+            if length > 0:
+                try:
+                    self.rfile.read(min(length, limit))
+                except Exception:
+                    pass
             return None
         if length <= 0 or length > limit:
+            if length > 0:
+                try:
+                    self.rfile.read(min(length, limit))
+                except Exception:
+                    pass
             return None
         try:
             data = json.loads(self.rfile.read(length).decode("utf-8"))
@@ -400,61 +422,72 @@ class Handler(BaseHTTPRequestHandler):
 
     def _chat(self, data: Dict[str, Any], regenerate: bool = False) -> None:
         message = str(data.get("message", "")).strip()
-        if not regenerate:
+        if regenerate:
+            # take back the last answer and ask the same question again
+            message = (self.state.assistant.undo_last_turn() or "").strip()
+            if not message:
+                return self._json({"error": "There is nothing to try again."}, 400)
+        else:
             if not message:
                 return self._json({"error": "Message is empty"}, 400)
             if len(message) > MAX_MESSAGE_CHARS:
                 return self._json({"error": f"Message is too long (max {MAX_MESSAGE_CHARS} characters)"}, 400)
         if not self.state.busy.acquire(blocking=False):
             return self._json({"error": "KAI is still answering. Wait a moment."}, 409)
-        if regenerate:
-            # take back the last answer and ask the same question again
-            message = (self.state.assistant.undo_last_turn() or "").strip()
-            if not message:
-                self.state.busy.release()
-                return self._json({"error": "There is nothing to try again."}, 400)
-
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Connection", "close")
-        self.end_headers()
-        self.close_connection = True
-
-        alive = True
-        write_lock = threading.Lock()
-
-        def send(payload: Dict[str, Any]) -> None:
-            nonlocal alive
-            if not alive:
-                return
-            line = ("data: " + json.dumps(payload, ensure_ascii=False) + "\n\n").encode("utf-8")
-            with write_lock:
-                try:
-                    self.wfile.write(line)
-                    self.wfile.flush()
-                except (BrokenPipeError, ConnectionError, OSError):
-                    alive = False
-
-        assistant = self.state.assistant
-        from documents import build_context
-
-        context = build_context(self.state.documents().load(), message)
-        previous_confirm = assistant.confirm
-        assistant.confirm = lambda text: self.state.ask_user(text, send) if alive else False
         try:
-            extra = {"context": context} if context else {}
-            reply = assistant.chat(
-                message,
-                on_token=lambda piece: send({"type": "token", "text": piece}),
-                on_event=lambda text: send({"type": "event", "text": text}),
-                **extra,
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.close_connection = True
+            try:
+                self.wfile.write(b": keep-alive\n\n")
+                self.wfile.flush()
+            except Exception:
+                pass
+
+            alive = True
+            write_lock = threading.Lock()
+
+            def send(payload: Dict[str, Any]) -> None:
+                nonlocal alive
+                if not alive:
+                    return
+                line = ("data: " + json.dumps(payload, ensure_ascii=False) + "\n\n").encode("utf-8")
+                with write_lock:
+                    try:
+                        self.wfile.write(line)
+                        self.wfile.flush()
+                    except (BrokenPipeError, ConnectionError, OSError):
+                        alive = False
+
+            assistant = self.state.assistant
+            from documents import build_context
+
+            context = build_context(self.state.documents().load(), message)
+            previous_confirm = assistant.confirm
+            assistant.confirm = (
+                lambda text: self.state.ask_user(text, send, is_alive=lambda: alive) if alive else False
             )
-            send({"type": "done", "reply": reply})
-        except Exception as exc:  # the assistant handles most errors itself
-            send({"type": "error", "text": f"{type(exc).__name__}: {exc}"})
+            try:
+                import inspect
+                extra = {"context": context} if context else {}
+                sig = inspect.signature(assistant.chat)
+                if "is_cancelled" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                    extra["is_cancelled"] = lambda: not alive
+                reply = assistant.chat(
+                    message,
+                    on_token=lambda piece: send({"type": "token", "text": piece}),
+                    on_event=lambda text: send({"type": "event", "text": text}),
+                    **extra,
+                )
+                send({"type": "done", "reply": reply})
+            except Exception as exc:  # the assistant handles most errors itself
+                send({"type": "error", "text": f"{type(exc).__name__}: {exc}"})
+            finally:
+                assistant.confirm = previous_confirm
         finally:
-            assistant.confirm = previous_confirm
             self.state.busy.release()
 
 

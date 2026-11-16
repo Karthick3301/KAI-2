@@ -60,11 +60,16 @@ def request_with_retry(
         if attempt > max_retries:
             return response  # let the caller's raise_for_status() report the final failure
 
+        try:
+            response.close()
+        except Exception:
+            pass
+
         retry_after = response.headers.get("Retry-After")
         if retry_after:
             try:
-                delay = float(retry_after)
-            except ValueError:
+                delay = min(max_delay, max(0.0, float(retry_after)))
+            except (ValueError, TypeError):
                 delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
         else:
             delay = min(max_delay, base_delay * (2 ** (attempt - 1)))

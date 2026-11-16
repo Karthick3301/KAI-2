@@ -29,8 +29,30 @@ def roles(bot):
 
 
 class NetworkErrorTests(unittest.TestCase):
+    def setUp(self):
+        self._orig_request_with_retry = A.request_with_retry
+        self._orig_env = dict(os.environ)
+
+    def tearDown(self):
+        A.request_with_retry = self._orig_request_with_retry
+        os.environ.clear()
+        os.environ.update(self._orig_env)
+
     def make_bot(self):
         return A.Assistant(Config())
+
+    def test_retry_after_clamped(self):
+        from unittest.mock import Mock, patch
+        from retry import request_with_retry
+
+        fake_resp = Mock()
+        fake_resp.status_code = 429
+        fake_resp.headers = {"Retry-After": "99999"}
+        with patch("requests.request", return_value=fake_resp), patch("time.sleep") as mock_sleep:
+            request_with_retry("POST", "https://example.com", max_retries=1, max_delay=10.0)
+            self.assertTrue(mock_sleep.called)
+            # Sleep delay must be clamped around max_delay + jitter, not 99999
+            self.assertLess(mock_sleep.call_args[0][0], 15.0)
 
     def test_connection_error_before_answer(self):
         def boom(*a, **k): raise requests.exceptions.ConnectionError("no internet")

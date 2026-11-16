@@ -103,20 +103,145 @@
   .status.busy i { background: var(--amber); animation: pulse 1.1s ease-in-out infinite; }
   @keyframes pulse { 50% { transform: scale(1.7); opacity: .45; } }
   #toolsBtn[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
-  .local-banner { font-size: 12.5px; color: var(--muted); background: var(--surface); border-bottom: 1px solid var(--line); padding: 6px 16px; text-align: center; }
-  .btn.round.live { color: #c0392b; border-color: #c0392b; animation: pulse 1.1s ease-in-out infinite; }
+  .local-banner {
+    font-size: 12.5px; color: var(--muted); background: var(--surface);
+    border-bottom: 1px solid var(--line); padding: 6px 36px 6px 16px; text-align: center;
+    position: relative; transition: opacity .2s;
+  }
+  .local-banner.hidden { display: none; }
+  .banner-close {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    background: transparent; border: 0; color: var(--muted); font-size: 16px;
+    cursor: pointer; padding: 2px 6px; line-height: 1; border-radius: 4px;
+  }
+  .banner-close:hover { color: var(--ink); background: var(--line); }
+
+  /* ---------- JARVIS Arc Reactor Pulse (Mic listening & Voice speaking) ---------- */
+  .btn.round.live,
+  .btn.round.speaking {
+    color: var(--accent) !important;
+    border-color: var(--accent) !important;
+    background: var(--accent-soft) !important;
+    position: relative;
+    animation: jarvisPulse 1.6s ease-in-out infinite;
+  }
+  .btn.round.live::before,
+  .btn.round.speaking::before {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 1.5px solid var(--accent);
+    opacity: 0.8;
+    animation: jarvisSonicRing 1.6s cubic-bezier(0.1, 0.7, 0.1, 1) infinite;
+    pointer-events: none;
+  }
+  .btn.round.live::after,
+  .btn.round.speaking::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 1px solid var(--accent);
+    opacity: 0.6;
+    animation: jarvisSonicRing 1.6s cubic-bezier(0.1, 0.7, 0.1, 1) infinite .45s;
+    pointer-events: none;
+  }
+
+  @keyframes jarvisPulse {
+    0%, 100% {
+      box-shadow: 0 0 8px hsla(var(--h) var(--s) 50% / .35),
+                  inset 0 0 6px hsla(var(--h) var(--s) 50% / .3);
+    }
+    50% {
+      box-shadow: 0 0 18px hsla(var(--h) var(--s) 50% / .75),
+                  0 0 32px hsla(var(--h) var(--s) 50% / .3),
+                  inset 0 0 10px hsla(var(--h) var(--s) 50% / .55);
+    }
+  }
+
+  @keyframes jarvisSonicRing {
+    0% {
+      transform: scale(0.95);
+      opacity: 0.85;
+    }
+    65%, 100% {
+      transform: scale(1.55);
+      opacity: 0;
+    }
+  }
+
   .btn.round.danger { color: #c0392b; border-color: #c0392b; }
   .btn.round.danger:hover:not(:disabled) { border-color: #c0392b; background: var(--accent-soft); }
   .btn.round[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+
+  /* ---------- Floating Scroll-to-bottom button ---------- */
+  .scroll-bottom-wrap {
+    max-width: 740px;
+    margin: 0 auto;
+    width: 100%;
+    position: relative;
+    height: 0;
+    display: flex;
+    justify-content: flex-end;
+    z-index: 10;
+  }
+  .scroll-bottom-btn {
+    position: absolute;
+    bottom: 12px;
+    right: 8px;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(8px) scale(0.9);
+    transition: opacity .2s ease, transform .2s cubic-bezier(0.2, 0.9, 0.3, 1), background .15s, border-color .15s, color .15s, box-shadow .15s;
+  }
+  .scroll-bottom-btn.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0) scale(1);
+  }
+  .scroll-bottom-btn:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 6px 20px hsla(var(--h) var(--s) 50% / 0.25), 0 4px 14px rgba(0, 0, 0, 0.35);
+    transform: translateY(-2px) scale(1.05);
+  }
+  .scroll-bottom-btn .i {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
 
   #chat { flex: 1; overflow-y: auto; padding: 24px 16px 8px; scroll-behavior: smooth; }
   .wrap { max-width: 740px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
 
   /* ---------- messages ---------- */
   .msg { overflow-wrap: anywhere; }
+  .user-wrap { align-self: flex-end; max-width: 85%; display: flex; flex-direction: column; align-items: flex-end; }
+  .user-wrap .msg.user { align-self: flex-end; max-width: 100%; }
+  .user-wrap .acts { margin-top: 4px; opacity: 0; transition: opacity .15s; }
+  .user-wrap:hover .acts, .user-wrap .acts:focus-within { opacity: 1; }
   .msg.user {
     align-self: flex-end; max-width: 85%; white-space: pre-wrap; background: var(--accent-soft);
-    border-radius: 18px 18px 4px 18px; padding: 9px 16px;
+    border: 1px solid hsla(var(--h) var(--s) 50% / .32);
+    border-radius: 18px 18px 4px 18px; padding: 10px 18px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
   }
   .row { display: flex; gap: 12px; align-items: flex-start; }
   .row .mark { width: 28px; height: 28px; border-radius: 8px; margin-top: 2px; }
@@ -133,9 +258,21 @@
   .msg.assistant code { font-family: var(--mono); font-size: .9em; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 1px 5px; }
   .msg.assistant pre { margin: 0 0 .7em; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; white-space: pre; }
   .msg.assistant pre code { background: none; border: 0; padding: 0; }
+  .msg.assistant .math-inline { font-family: "Cambria Math", "Latin Modern Math", "STIX Two Math", Georgia, serif; font-style: italic; padding: 0 2px; }
+  .msg.assistant .math-block { display: block; margin: .6em 0; padding: 8px 14px; text-align: center; font-family: "Cambria Math", "Latin Modern Math", "STIX Two Math", Georgia, serif; font-size: 1.05em; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+  .msg.assistant .math-inline sup, .msg.assistant .math-block sup { font-size: .75em; vertical-align: super; line-height: 0; }
+  .msg.assistant .math-inline sub, .msg.assistant .math-block sub { font-size: .75em; vertical-align: sub; line-height: 0; }
   .msg.user a { color: var(--accent); }
   .typing::after { content: ""; display: inline-block; width: 7px; height: 1em; margin-left: 3px; vertical-align: -2px; background: var(--accent); border-radius: 2px; animation: blink 1s steps(2) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
+  .thinking-dots { display: inline-flex; align-items: center; gap: 5px; padding: 6px 4px; }
+  .thinking-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: dotPulse 1.3s ease-in-out infinite; }
+  .thinking-dots span:nth-child(2) { animation-delay: .2s; }
+  .thinking-dots span:nth-child(3) { animation-delay: .4s; }
+  @keyframes dotPulse {
+    0%, 80%, 100% { transform: scale(0.65); opacity: 0.35; }
+    40% { transform: scale(1.2); opacity: 1; background: var(--accent); }
+  }
   .acts { display: flex; align-items: center; gap: 2px; margin-top: 6px; opacity: 0; transition: opacity .15s; }
   .row:hover .acts, .acts:focus-within, .row.last .acts { opacity: 1; }
   .acts .btn { padding: 3px 8px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
@@ -173,6 +310,10 @@
   form#form { padding: 8px 16px 16px; }
   .docs { max-width: 740px; margin: 0 auto 8px; display: flex; flex-wrap: wrap; gap: 6px; }
   .docs:empty { display: none; }
+  .chips-bar { max-width: 740px; margin: 0 auto 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips-bar:empty { display: none; }
+  .chip-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; cursor: pointer; transition: border-color .15s, background .15s, transform .1s; box-shadow: var(--shadow); }
+  .chip-btn:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); transform: translateY(-1px); }
   .doc { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 4px 3px 12px; background: var(--surface); max-width: 100%; }
   .doc span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
   .doc button { border: 0; background: transparent; padding: 0 8px; color: var(--muted); }
@@ -243,11 +384,13 @@
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
     <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
     <symbol id="i-retry" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></symbol>
     <symbol id="i-tools" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></symbol>
     <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
     <symbol id="i-vol" viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6l-5 4H4z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></symbol>
     <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 5v14M19 12l-7 7-7-7"/></symbol>
   </defs>
 </svg>
 
@@ -273,16 +416,26 @@
       <div class="status" id="status" role="status" aria-live="polite"><i></i><span id="statusText">connecting...</span></div>
       <button class="btn" id="toolsBtn" type="button" aria-pressed="true" title="Let KAI use tools: search, files, time, memory"><svg class="i"><use href="#i-tools"/></svg><span class="sr">Tools</span><span id="toolsLabel" style="margin-left:6px">Tools on</span></button>
     </header>
-    <div class="local-banner">Runs on this computer only — no sign-in. One chat at a time; a second tab waits.</div>
+    <div class="local-banner" id="localBanner">
+      <span>Runs on this computer only — no sign-in. One chat at a time; a second tab waits.</span>
+      <button type="button" class="banner-close" id="bannerClose" title="Dismiss banner" aria-label="Dismiss banner">×</button>
+    </div>
 
     <section id="chat" aria-label="Conversation"><div class="wrap" id="log"></div></section>
 
+    <div class="scroll-bottom-wrap">
+      <button type="button" class="scroll-bottom-btn" id="scrollBottom" title="Scroll to bottom" aria-label="Scroll to bottom">
+        <svg class="i"><use href="#i-arrow-down"/></svg>
+      </button>
+    </div>
+
     <form id="form">
       <div class="docs" id="docs"></div>
+      <div class="chips-bar" id="chipsBar" role="region" aria-label="Suggested follow-ups"></div>
       <div class="composer">
         <button type="button" class="btn round" id="attach" title="Attach a document (PDF, Word, text) and ask about it" aria-label="Attach a document"><svg class="i"><use href="#i-plus"/></svg></button>
         <input type="file" id="file" hidden accept=".pdf,.docx,.txt,.md,.csv,.json,.log,.py,.js,.ts,.html,.css,.java,.kt,.xml,.yaml,.yml,.ini,.toml,.sql,.c,.cpp,.h">
-        <textarea id="input" rows="1" placeholder="Message KAI" aria-label="Message KAI" autofocus></textarea>
+        <textarea id="input" rows="1" placeholder="Message KAI" aria-label="Message KAI" autofocus writingsuggestions="false" autocomplete="off" data-ms-editor="false" spellcheck="false"></textarea>
         <button type="button" class="btn round" id="mic" title="Speak instead of typing" aria-label="Speak instead of typing" aria-pressed="false"><svg class="i"><use href="#i-mic"/></svg><span class="sr">Mic</span></button>
         <button type="button" class="btn round" id="speak" title="Read replies out loud" aria-label="Read replies out loud" aria-pressed="false"><svg class="i"><use href="#i-vol"/></svg><span class="sr">Speak</span></button>
         <button class="btn round" id="send" type="submit" aria-label="Send"><svg class="i"><use href="#i-send"/></svg></button>

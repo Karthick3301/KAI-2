@@ -23,6 +23,8 @@ class Message:
 
     def to_dict(self) -> Dict[str, Any]:
         result: Dict[str, Any] = {"role": self.role, "content": self.content or ""}
+        if self.timestamp:
+            result["timestamp"] = self.timestamp
         if self.tool_calls:
             result["tool_calls"] = self.tool_calls
         if self.name:
@@ -52,9 +54,11 @@ class Message:
         content = data.get("content") or ""
         if not isinstance(content, str):
             content = json.dumps(content)
+        ts = data.get("timestamp")
         return cls(
             role=data.get("role", "user"),
             content=content,
+            timestamp=float(ts) if isinstance(ts, (int, float)) and ts > 0 else time.time(),
             tool_calls=data.get("tool_calls") or [],
             name=data.get("name"),
             tool_call_id=data.get("tool_call_id"),
@@ -197,7 +201,7 @@ def sanitize_gemini_contents(contents: List[Dict[str, Any]]) -> List[Dict[str, A
             if not previous_has_call:
                 continue
 
-        if cleaned and cleaned[-1].get("role") == role == "model":
+        if cleaned and cleaned[-1].get("role") == role:
             cleaned[-1]["parts"] = list(cleaned[-1].get("parts") or []) + parts
             continue
 

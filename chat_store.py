@@ -38,8 +38,9 @@ class ChatStore:
         return self.valid_id(chat_id) and self.path(chat_id).exists()
 
     # ---- reading ----
-    def _first_user_text_and_count(self, path: Path) -> tuple[str, int]:
+    def _chat_meta(self, path: Path, chat_id: str) -> tuple[str, int, float]:
         first, count = "", 0
+        last_time = 0.0
         try:
             with open(path, "r", encoding="utf-8") as handle:
                 for line in handle:
@@ -47,12 +48,32 @@ class ChatStore:
                         msg = json.loads(line)
                     except json.JSONDecodeError:
                         continue
+                    ts = msg.get("timestamp")
+                    if isinstance(ts, (int, float)) and ts > 0:
+                        last_time = max(last_time, float(ts))
                     if msg.get("role") == "user":
                         count += 1
                         if not first:
                             first = " ".join(str(msg.get("content") or "").split())
         except OSError:
             pass
+
+        if last_time > 0:
+            updated = last_time
+        else:
+            try:
+                # Chat IDs start with the 8-character hex unix creation timestamp
+                updated = float(int(chat_id[:8], 16)) if len(chat_id) >= 8 else path.stat().st_mtime
+            except (ValueError, OSError):
+                try:
+                    updated = path.stat().st_mtime
+                except OSError:
+                    updated = time.time()
+
+        return first, count, updated
+
+    def _first_user_text_and_count(self, path: Path) -> tuple[str, int]:
+        first, count, _ = self._chat_meta(path, path.stem)
         return first, count
 
     def list(self, keep: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -62,7 +83,7 @@ class ChatStore:
             chat_id = path.stem
             if not self.valid_id(chat_id):
                 continue
-            first, count = self._first_user_text_and_count(path)
+            first, count, updated = self._chat_meta(path, chat_id)
             if count == 0 and chat_id != keep:
                 continue
             title = first[:TITLE_CHARS].rstrip() + ("..." if len(first) > TITLE_CHARS else "")
@@ -70,12 +91,22 @@ class ChatStore:
                 "id": chat_id,
                 "title": title or "New chat",
                 "messages": count,
-                "updated": path.stat().st_mtime,
+                "updated": time.time() if count == 0 else updated,
             })
         if keep and self.valid_id(keep) and all(r["id"] != keep for r in rows):
             rows.append({"id": keep, "title": "New chat", "messages": 0, "updated": time.time()})
         rows.sort(key=lambda r: r["updated"], reverse=True)
         return rows
+
+    def prune_empty(self, keep: Optional[str] = None) -> None:
+        """Remove leftover chat files that have zero user messages and are not currently open."""
+        for path in self.folder.glob("*.jsonl"):
+            chat_id = path.stem
+            if not self.valid_id(chat_id) or chat_id == keep:
+                continue
+            _, count = self._first_user_text_and_count(path)
+            if count == 0:
+                self.delete(chat_id)
 
     # ---- changing ----
     def delete(self, chat_id: str) -> bool:

@@ -113,6 +113,24 @@ class NormalFetchTests(unittest.TestCase):
         self.assertLess(len(result), tools.WEB_FETCH_MAX_CHARS + 300)
         self.assertIn("truncated", result)
 
+    def test_html_page_is_read_as_plain_words(self):
+        page = (
+            b"<html><head><title>Shop</title><style>body{color:red}</style>"
+            b"<script>track()</script></head><body>"
+            b"<h1>Warranty</h1><p>The battery is covered for 24 months.</p>"
+            b"<ul><li>Battery</li><li>Charger</li></ul></body></html>"
+        )
+        result = self.run_fetch(page, {"Content-Type": "text/html; charset=utf-8"})
+        self.assertIn("The battery is covered for 24 months.", result)
+        self.assertIn("Battery", result)
+        self.assertNotIn("track()", result)
+        self.assertNotIn("color:red", result)
+        self.assertNotIn("<p>", result)
+
+    def test_html_entities_are_readable(self):
+        result = self.run_fetch(b"<p>Fish &amp; chips &quot;today&quot;</p>", {"Content-Type": "text/html"})
+        self.assertIn('Fish & chips "today"', result)
+
     def test_declared_charset_is_respected(self):
         result = self.run_fetch("café".encode("latin-1"), {"Content-Type": "text/html; charset=latin-1"})
         self.assertIn("café", result)

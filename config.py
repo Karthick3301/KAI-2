@@ -165,7 +165,7 @@ class Config:
         default_model_names = {
             "mistral": "mistral-small-latest",
             "ollama": "qwen2.5:7b",
-            "gemini": "gemini-3.6-flash",
+            "gemini": "gemini-2.0-flash",
         }
         self.model_config = ModelConfig(
             name=(os.getenv("MODEL_NAME") or "").strip() or default_model_names[provider],

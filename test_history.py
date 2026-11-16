@@ -81,6 +81,16 @@ class SanitizeGeminiTests(unittest.TestCase):
         self.assertIn("text", cleaned[1]["parts"][0])
         self.assertIn("functionCall", cleaned[1]["parts"][1])
 
+    def test_merges_consecutive_user_turns(self) -> None:
+        contents = [
+            {"role": "user", "parts": [{"text": "first question"}]},
+            {"role": "user", "parts": [{"text": "second question"}]},
+        ]
+        cleaned = sanitize_gemini_contents(contents)
+        self.assertEqual(len(cleaned), 1)
+        self.assertEqual(cleaned[0]["role"], "user")
+        self.assertEqual(len(cleaned[0]["parts"]), 2)
+
 
 class TruncateTests(unittest.TestCase):
     def test_does_not_orphan_function_calls(self) -> None:
@@ -120,6 +130,32 @@ class TruncateTests(unittest.TestCase):
                     if message.tool_calls:
                         self.assertGreater(index, 0)
                         self.assertEqual(body[index - 1].role, "user")
+
+
+class SwitchChatTests(unittest.TestCase):
+    def test_switch_chat_does_not_touch_file_mtime(self) -> None:
+        import json
+        import os
+        from config import Config
+        from assistant import Assistant, Message
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "chat.jsonl"
+            file_path.write_text(json.dumps({"role": "user", "content": "What is the time in Tokyo?"}) + "\n", encoding="utf-8")
+            old_time = 1_000_000.0
+            os.utime(file_path, (old_time, old_time))
+
+            config = Config()
+            config.app_config.auto_save = True
+            assistant = Assistant(config)
+            assistant.switch_chat(str(file_path))
+
+            # Merely opening the chat must not update its modification time
+            self.assertEqual(file_path.stat().st_mtime, old_time)
+
+            # Adding a new message should update the file
+            assistant.chat_history.add_message(Message(role="user", content="followup"))
+            self.assertGreater(file_path.stat().st_mtime, old_time)
 
 
 if __name__ == "__main__":

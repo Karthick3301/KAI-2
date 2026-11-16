@@ -143,6 +143,8 @@ def split_chunks(text: str) -> List[str]:
 
 def pick_chunks(text: str, question: str, top: int = TOP_CHUNKS) -> List[str]:
     chunks = split_chunks(text)
+    if top <= 0:
+        return []
     if len(chunks) <= top:
         return chunks
     q_words = set(_words(question))
@@ -157,8 +159,11 @@ def pick_chunks(text: str, question: str, top: int = TOP_CHUNKS) -> List[str]:
         scores.append((score, -index))
     ranked = sorted(range(len(chunks)), key=lambda i: scores[i], reverse=True)
     if scores[ranked[0]][0] == 0:  # question shares no words (e.g. "summarise"): sample the whole file
-        step = (len(chunks) - 1) / (top - 1)
-        chosen = sorted({round(i * step) for i in range(top)})
+        if top == 1:
+            chosen = [0]
+        else:
+            step = (len(chunks) - 1) / (top - 1)
+            chosen = sorted({round(i * step) for i in range(top)})
     else:
         chosen = sorted(ranked[:top])
     return [chunks[i] for i in chosen]

@@ -21,6 +21,7 @@ def say(text): return [sse({"candidates": [{"content": {"parts": [{"text": text}
 
 class InjectionTests(unittest.TestCase):
     def setUp(self):
+        self._orig_env = dict(os.environ)
         tmp = tempfile.mkdtemp()
         os.environ.update(MODEL_PROVIDER="gemini", GEMINI_API_KEY="fake", AUTO_SAVE="false",
             WORKSPACE_DIR=f"{tmp}/ws", CHAT_HISTORY_FILE=f"{tmp}/h.jsonl",
@@ -34,6 +35,8 @@ class InjectionTests(unittest.TestCase):
     def tearDown(self):
         tools.TOOLS_REGISTRY["web_fetch"].func = self._old_fetch
         A.request_with_retry = self._old_request
+        os.environ.clear()
+        os.environ.update(self._orig_env)
 
     def script(self, *steps):
         it = iter(steps)

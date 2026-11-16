@@ -63,7 +63,7 @@ MODEL_NAME=qwen2.5:7b
 
 # or Gemini (free key from Google AI Studio)
 MODEL_PROVIDER=gemini
-MODEL_NAME=gemini-3.6-flash
+MODEL_NAME=gemini-2.0-flash
 GEMINI_API_KEY=your-key-here
 
 # or Mistral

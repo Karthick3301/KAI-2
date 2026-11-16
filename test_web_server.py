@@ -61,7 +61,7 @@ class FakeAssistant:
     def refresh_system_prompt(self):
         pass
 
-    def chat(self, message, on_token=None, on_event=None, context=None):
+    def chat(self, message, on_token=None, on_event=None, context=None, **kwargs):
         self.last_context = context
         self.last_question = message
         if on_event:

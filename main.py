@@ -339,6 +339,13 @@ def main() -> None:
         print_color(f"Tools: {'on' if assistant.tools_enabled else 'off'}", "WHITE")
         print_color(f"Voice mode: {'on' if VOICE_MODE else 'off'}", "WHITE")
         print_color(f"Workspace: {assistant.app_config.workspace_dir}", "WHITE")
+        saved_turns = sum(1 for m in assistant.get_history() if m.role in ("user", "assistant"))
+        if saved_turns:
+            print_color(
+                f"Continuing your saved chat ({saved_turns} messages from last time). "
+                "Type /clear for a fresh chat.",
+                "DIM",
+            )
 
         while True:
             try:

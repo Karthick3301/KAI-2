@@ -38,7 +38,7 @@ from history import (
     repair_history_body,
     sanitize_gemini_contents,
 )
-from links import LinkFlattener, _MD_LINK_RE, _plain_link, flatten_markdown_links
+from links import LinkFlattener, PlainTextFilter, _MD_LINK_RE, _plain_link, flatten_markdown_links
 
 # Tools that change things. After web content is in the conversation, the user must approve them.
 SENSITIVE_AFTER_WEB = {"write_file", "remember"}
@@ -96,6 +96,13 @@ class Assistant:
                 "starting with a dash. Write web addresses as plain text, never as markdown links "
                 "like [text](address)."
             )
+        else:
+            parts.append(
+                "Formatting rule: your replies are shown in a web interface. You can use standard markdown "
+                "(bold, headings, bulleted or numbered lists, code blocks). For math and scientific formulas, "
+                "prefer clean readable expressions using unicode characters (such as E, V(x), ψ(x), P ≈ e^(-2kL)) "
+                "so they are easy to read directly."
+            )
         if self.tools_enabled:
             parts.append(
                 "Never make up web links. Only share a link that the user gave you, that appeared in "
@@ -118,6 +125,23 @@ class Assistant:
             "If asked whether you remember something and it is not there, say you do not have it "
             "saved and offer to save it."
         )
+        parts.append(
+            "Language consistency: always reply in the same language the user uses (default to "
+            "English). Never mix in or drift into words or characters from other languages "
+            "(such as Chinese) unless the user explicitly asks for translation or writes in that "
+            "language."
+        )
+        parts.append(
+            "Empathy and sensitive topics: when discussing personal, emotional, or painful topics "
+            "(such as breakups, relationship struggles, grief, illness, or loss), respond with "
+            "empathy, tact, and kindness. Never suggest celebrating, partying, or trivializing "
+            "painful life events unless the user explicitly frames them as a celebration."
+        )
+        parts.append(
+            "Attribution honesty: when answering questions about previous turns or words in this "
+            "conversation, accurately distinguish between what you said and what the user said. "
+            "Never claim the user provided or said words that you generated yourself."
+        )
         memory_block = self.memory.as_prompt_block()
         if memory_block:
             parts.append(memory_block)
@@ -125,13 +149,13 @@ class Assistant:
             parts.append("Saved memory list: empty.")
         return "\n\n".join(parts)
 
-    def _ensure_system_message(self) -> None:
+    def _ensure_system_message(self, save: bool = True) -> None:
         prompt = self._build_system_prompt()
         if self.chat_history.messages and self.chat_history.messages[0].role == "system":
             self.chat_history.messages[0].content = prompt
         else:
             self.chat_history.messages.insert(0, Message(role="system", content=prompt))
-        if self.app_config.auto_save:
+        if save and self.app_config.auto_save:
             self.chat_history.save()
 
     def refresh_system_prompt(self) -> None:
@@ -300,10 +324,13 @@ class Assistant:
         stream: bool,
         on_token: Optional[TokenCallback],
         on_event: Optional[EventCallback] = None,
+        is_cancelled: Optional[Callable[[], bool]] = None,
     ) -> Dict[str, Any]:
         tools = get_openai_tools() if self.tools_enabled else None
         if stream:
-            return self._complete_stream(messages, tools=tools, on_token=on_token, on_event=on_event)
+            return self._complete_stream(
+                messages, tools=tools, on_token=on_token, on_event=on_event, is_cancelled=is_cancelled
+            )
         return self._complete_json(messages, tools, on_event=on_event)
 
     def _complete_json(
@@ -393,6 +420,7 @@ class Assistant:
         tools: Optional[List[Dict[str, Any]]],
         on_token: Optional[TokenCallback],
         on_event: Optional[EventCallback] = None,
+        is_cancelled: Optional[Callable[[], bool]] = None,
     ) -> Dict[str, Any]:
         if self.model_config.provider == "mistral":
             payload: Dict[str, Any] = {
@@ -419,6 +447,12 @@ class Assistant:
             content_parts: List[str] = []
             pending_calls: Dict[int, Dict[str, Any]] = {}
             for line in response.iter_lines(decode_unicode=True):
+                if is_cancelled and is_cancelled():
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
+                    break
                 if not line:
                     continue
                 if line.startswith("data: "):
@@ -481,6 +515,12 @@ class Assistant:
             content_parts = []
             ollama_calls: List[Dict[str, Any]] = []
             for line in response.iter_lines(decode_unicode=True):
+                if is_cancelled and is_cancelled():
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
+                    break
                 if not line:
                     continue
                 try:
@@ -529,6 +569,12 @@ class Assistant:
             tool_calls: List[Dict[str, Any]] = []
             thought_signature: Optional[str] = None
             for line in response.iter_lines(decode_unicode=True):
+                if is_cancelled and is_cancelled():
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
+                    break
                 if not line or not line.startswith("data: "):
                     continue
                 data = line[6:].strip()
@@ -669,33 +715,54 @@ class Assistant:
         on_token: Optional[TokenCallback] = None,
         on_event: Optional[EventCallback] = None,
         context: Optional[str] = None,
+        is_cancelled: Optional[Callable[[], bool]] = None,
     ) -> str:
         """`context` is untrusted text (for example document excerpts) shown to the model for
         this one question only. It is not saved in the chat history."""
         flattener = None
+        plain = None
         if on_token and self.app_config.plain_text:
-            flattener = LinkFlattener(on_token)
+            plain = PlainTextFilter(on_token)
+            flattener = LinkFlattener(plain.feed)
             on_token = flattener.feed
         self._transient_context = context or None
         try:
-            return self._chat_inner(user_message, on_token, on_event)
+            return self._chat_inner(user_message, on_token, on_event, is_cancelled=is_cancelled)
         finally:
             self._transient_context = None
             if flattener:
                 flattener.flush()
+            if plain:
+                plain.flush()
 
-    def _chat_inner(self, user_message, on_token, on_event) -> str:
+    def _chat_inner(
+        self,
+        user_message: str,
+        on_token: Optional[TokenCallback],
+        on_event: Optional[EventCallback],
+        is_cancelled: Optional[Callable[[], bool]] = None,
+    ) -> str:
         self.chat_history.add_message(Message(role="user", content=user_message))
         self._ensure_system_message()
 
         final_text = ""
         for _ in range(self.app_config.max_tool_iterations):
+            if is_cancelled and is_cancelled():
+                final_text = "Stopped."
+                self.chat_history.add_message(Message(role="assistant", content=final_text))
+                return final_text
             api_messages = self.chat_history.get_api_messages(self.model_config.provider)
             if self._transient_context:
                 api_messages = self._with_context(api_messages, self._transient_context)
             use_stream = bool(self.streaming and on_token)
             try:
-                response = self._complete(api_messages, stream=use_stream, on_token=on_token, on_event=on_event)
+                response = self._complete(
+                    api_messages,
+                    stream=use_stream,
+                    on_token=on_token,
+                    on_event=on_event,
+                    is_cancelled=is_cancelled,
+                )
             except requests.exceptions.HTTPError as exc:
                 status = exc.response.status_code if exc.response is not None else None
                 body_snippet = ""
@@ -735,9 +802,15 @@ class Assistant:
                 content = json.dumps(content)
 
             if tool_calls:
+                if is_cancelled and is_cancelled():
+                    final_text = "Stopped."
+                    self.chat_history.add_message(Message(role="assistant", content=final_text))
+                    return final_text
                 assistant_msg = Message(role="assistant", content=content, tool_calls=tool_calls)
                 self.chat_history.add_message(assistant_msg, compact=False)
                 for call in tool_calls:
+                    if is_cancelled and is_cancelled():
+                        break
                     function = call["function"]
                     name = function.get("name") or ""
                     try:
@@ -793,11 +866,11 @@ class Assistant:
         history.load()
         history.normalize()
         history.truncate()
-        self._ensure_system_message()
+        self._ensure_system_message(save=False)
 
     def clear_history(self) -> None:
         self.chat_history.clear()
-        self._ensure_system_message()
+        self._ensure_system_message(save=False)
 
     def get_history(self) -> List[Message]:
         return self.chat_history.messages
