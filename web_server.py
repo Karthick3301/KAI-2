@@ -438,7 +438,7 @@ class Handler(BaseHTTPRequestHandler):
 
         # Gemini Cloud models
         if getattr(cfg, "gemini_api_key", None):
-            gemini_defaults = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+            gemini_defaults = ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-2.5-flash", "gemini-flash-latest"]
             if mc.provider == "gemini" and mc.name not in gemini_defaults:
                 gemini_defaults.insert(0, mc.name)
             for m in gemini_defaults:
