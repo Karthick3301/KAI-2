@@ -1061,6 +1061,7 @@ function applySpeak() { $("speak").setAttribute("aria-pressed", String(speakOn))
 let speakBuf = "";
 let inCodeBlock = false;
 let spokeCodeNotice = false;
+let isFirstUtterance = true;
 let activeUtterances = 0;
 
 function setSpeaking(active) {
@@ -1086,8 +1087,18 @@ function cleanForSpeech(text) {
   s = s.replace(/\bF#/g, "F Sharp");
   s = s.replace(/#(\d+)/g, "number $1");
 
-  // Code blocks: summarize to avoid reciting code syntax
-  s = s.replace(/```[\s\S]*?```/g, " code snippet. ");
+  // Friendly expansion of Latin abbreviations
+  s = s.replace(/\be\.g\.,?\s*/gi, "for example, ");
+  s = s.replace(/\bi\.e\.,?\s*/gi, "that is, ");
+  s = s.replace(/\betc\./gi, "etcetera");
+  s = s.replace(/\bvs\.?\s*/gi, "versus ");
+
+  // Parentheses: convert (text) to ", text, " so speech flows naturally without bracket pauses
+  s = s.replace(/\s*\(([^)]*)\)\s*/g, ", $1, ");
+  s = s.replace(/[()]/g, " ");
+
+  // Code blocks: summarize to avoid reciting raw code syntax
+  s = s.replace(/```[\s\S]*?```/g, " Here is the code snippet. ");
 
   // Inline code: strip backticks
   s = s.replace(/`([^`]+)`/g, "$1");
@@ -1135,9 +1146,17 @@ function cleanForSpeech(text) {
   // Escaped markdown characters (\*, \_, \[, etc.)
   s = s.replace(/\\([*_{}[\]()#+\-.!~`])/g, "$1");
 
-  // Collapse excessive whitespace
+  // Colons in headers/lists: normalize spacing
+  s = s.replace(/\s*:\s*/g, ": ");
+
+  // Clean punctuation anomalies like ", ." or ",,"
+  s = s.replace(/,\s*\./g, ".");
+  s = s.replace(/,\s*,+/g, ",");
+
+  // Collapse excessive whitespace and newlines
   s = s.replace(/[ \t]+/g, " ");
-  s = s.replace(/\n+/g, " ");
+  s = s.replace(/\s*\n\s*/g, " ");
+  s = s.replace(/\.\s*\.+/g, ".");
 
   return s.trim();
 }
@@ -1151,8 +1170,16 @@ function enqueueUtter(str) {
     const v = chosenVoice();
     if (v) u.voice = v;
     u.onstart = () => { activeUtterances++; setSpeaking(true); };
-    u.onend = () => { activeUtterances = Math.max(0, activeUtterances - 1); if (!activeUtterances) setSpeaking(false); };
-    u.onerror = () => { activeUtterances = Math.max(0, activeUtterances - 1); if (!activeUtterances) setSpeaking(false); };
+    u.onend = () => {
+      activeUtterances = Math.max(0, activeUtterances - 1);
+      if (!activeUtterances) setSpeaking(false);
+      try { if (window.speechSynthesis.paused) window.speechSynthesis.resume(); } catch (e) {}
+    };
+    u.onerror = () => {
+      activeUtterances = Math.max(0, activeUtterances - 1);
+      if (!activeUtterances) setSpeaking(false);
+      try { if (window.speechSynthesis.paused) window.speechSynthesis.resume(); } catch (e) {}
+    };
     if (window.speechSynthesis.paused) {
       try { window.speechSynthesis.resume(); } catch (e) {}
     }
@@ -1164,12 +1191,12 @@ function speakUtter(text) {
   try {
     const cleaned = cleanForSpeech(text);
     if (!cleaned || !/[a-zA-Z0-9]/.test(cleaned)) return;
-    // Keep individual utterances concise for near-instant speech synthesis start
-    if (cleaned.length > 240) {
+    // Standard utterances speak fluently up to ~450 chars; only split if extraordinarily long
+    if (cleaned.length > 450) {
       let rest = cleaned;
       while (rest.length > 0) {
-        let cut = rest.length > 240 ? Math.max(rest.lastIndexOf(" ", 240), 60) : rest.length;
-        if (cut <= 0 || cut > 240) cut = Math.min(240, rest.length);
+        let cut = rest.length > 450 ? Math.max(rest.lastIndexOf(" ", 450), 120) : rest.length;
+        if (cut <= 0 || cut > 450) cut = Math.min(450, rest.length);
         const part = rest.slice(0, cut).trim();
         rest = rest.slice(cut).trim();
         if (part && /[a-zA-Z0-9]/.test(part)) enqueueUtter(part);
@@ -1180,48 +1207,38 @@ function speakUtter(text) {
   } catch (e) {}
 }
 
-function findSplitIndex(str) {
-  if (!str || str.length < 3) return -1;
+function findSentenceSplit(str, minLen) {
+  if (!str || str.length < minLen) return -1;
 
-  // 1. Natural pause on line break
-  const nlIdx = str.indexOf("\n");
-  if (nlIdx >= 0 && nlIdx < 160) {
-    if (str.slice(0, nlIdx).trim().length > 0) {
-      return nlIdx + 1;
-    }
-  }
-
-  // 2. Strong sentence endings: ! or ? followed by whitespace or end
-  const strongMatch = str.match(/^([\s\S]+?[!?]+["']?)(?:\s|$)/);
-  if (strongMatch && strongMatch[1].trim().length >= 3) {
-    return strongMatch[0].length;
-  }
-
-  // 3. Period sentence ending: avoid digits before period ("1.", "2.5") and common abbreviations
-  const periodRegex = /([\s\S]+?[^0-9\s]\.["']?)(?:\s|$)/;
-  const pMatch = str.match(periodRegex);
-  if (pMatch) {
-    const candidate = pMatch[1];
+  // 1. Natural sentence ending (. ! ?) followed by whitespace or newline
+  // Avoid numbers before period ("1.", "2.5") and common abbreviations
+  const regex = /([\s\S]{25,}?[^0-9\s][.!?]["']?)(?:\s|\n|$)/;
+  const m = str.match(regex);
+  if (m) {
+    const candidate = m[1];
     const isAbbr = /(?:e\.g|i\.e|etc|vs|dr|mr|mrs|ms|prof|inc|ltd)\.$/i.test(candidate.trim());
-    if (!isAbbr && candidate.trim().length >= 3) {
-      return pMatch[0].length;
+    if (!isAbbr) {
+      return m[0].length;
     }
   }
 
-  // 4. Early clause boundary for low latency (comma, colon, semicolon, dash)
-  // Splits early (>= 30 chars) so speech begins almost simultaneously with text streaming
-  if (str.length >= 30) {
-    const clauseMatch = str.match(/^([\s\S]{18,80}?(?:[,;:—]|\s-\s))(?:\s|$)/);
-    if (clauseMatch && clauseMatch[1].trim().length >= 15) {
-      return clauseMatch[0].length;
-    }
+  // 2. Paragraph break (\n\n) if buffer is at least minLen
+  const pBreak = str.indexOf("\n\n");
+  if (pBreak >= minLen) {
+    return pBreak + 2;
   }
 
-  // 5. Overflow fallback: if buffer > 160 chars without punctuation, cut cleanly at last space
-  if (str.length > 160) {
-    const lastSpace = str.lastIndexOf(" ", 160);
-    if (lastSpace >= 40) {
-      return lastSpace + 1;
+  // 3. Fallback if buffer is getting large (> 260 chars): split at any sentence boundary
+  if (str.length > 260) {
+    const fallbackRegex = /([\s\S]+?[^0-9\s][.!?]["']?)(?:\s|\n|$)/;
+    const fm = str.match(fallbackRegex);
+    if (fm && fm[1].trim().length >= 25) {
+      return fm[0].length;
+    }
+    // Hard overflow fallback (> 380 chars): cut cleanly at last space
+    if (str.length > 380) {
+      const lastSpace = str.lastIndexOf(" ", 340);
+      if (lastSpace >= 100) return lastSpace + 1;
     }
   }
 
@@ -1255,6 +1272,7 @@ function speakReset() {
   speakBuf = "";
   inCodeBlock = false;
   spokeCodeNotice = false;
+  isFirstUtterance = true;
   activeUtterances = 0;
   setSpeaking(false);
   try { window.speechSynthesis.cancel(); } catch (e) {}
@@ -1296,10 +1314,13 @@ function speakChunk(piece) {
         break;
       }
 
-      const cutIdx = findSplitIndex(speakBuf);
+      // First sentence starts quickly (minLen ~50); subsequent sentences group into smooth thoughts (minLen ~160)
+      const minLen = isFirstUtterance ? 50 : 160;
+      const cutIdx = findSentenceSplit(speakBuf, minLen);
       if (cutIdx > 0) {
         const chunk = speakBuf.slice(0, cutIdx);
         speakBuf = speakBuf.slice(cutIdx);
+        isFirstUtterance = false;
         speakUtter(chunk);
         continue;
       }
@@ -1317,7 +1338,8 @@ function speakFlush() {
     speakBuf = "";
     inCodeBlock = false;
     spokeCodeNotice = false;
-  } catch (e) { speakBuf = ""; }
+    isFirstUtterance = true;
+  } catch (e) { speakBuf = ""; isFirstUtterance = true; }
 }
 
 function speakReply(text) {
